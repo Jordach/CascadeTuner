@@ -1,0 +1,15 @@
+name: CTuner
+
+channels:
+  - conda-forge
+  - defaults
+  - nvidia
+dependencies:
+  - cuda-toolkit=12.2
+  - git
+  - numpy
+  - pip
+  - python=3.10.9
+  - scikit-image
+  - pip:
+    - -r requirements.txt

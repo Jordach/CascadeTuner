@@ -1,0 +1,46 @@
+# GLOBAL STUFF
+experiment_id: stage_c_1b_finetuning
+checkpoint_path: output
+output_path: output
+model_version: 1B
+dtype: bfloat16
+
+# WandB
+# wandb_project: StableCascade
+# wandb_entity: wandb_username
+
+# TRAINING PARAMS
+lr: 5.0e-6
+batch_size: 4
+image_size: 1024
+num_epochs: 5
+save_every_n_epochs: 1
+grad_accum_steps: 1
+updates: 2000
+backup_every: 20000
+save_every: 500
+warmup_updates: 1
+use_fsdp: False
+seed: 69
+clip_skip: -1
+max_token_limit: 900
+cache_latents: false
+#use_pytorch_cross_attention: true
+
+# OPTIMIZER
+# Options: AdamW, AdamW8bit, Adafactor
+optimizer_type: AdamW8bit
+
+# GDF
+# adaptive_loss_weight: True
+
+# ema_start_iters: 5000
+# ema_iters: 100
+# ema_beta: 0.9
+
+local_dataset_path: [F:\novelai, F:\Waifusion]
+reject_aspects: 3.75
+dropout: 0.1
+effnet_checkpoint_path: models/effnet_encoder.safetensors
+previewer_checkpoint_path: models/previewer.safetensors
+generator_checkpoint_path: models/stage_c_lite_bf16.safetensors
