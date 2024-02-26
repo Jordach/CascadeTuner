@@ -64,7 +64,8 @@ class BucketWalker():
 					ext = os.path.splitext(f)[1].lower()
 					if ext in [".jpg", ".jpeg", ".png", ".bmp", ".webp"]:
 						try:
-							image = Image.open(current)
+							# Converting to RGB will ensure no truncated or malformed images pass into the training set
+							image = Image.open(current).convert("RGB")
 							width, height = image.size
 							aspect = width / height
 							# Only allow aspect ratios above this, a ratio of 6 would allow all aspects less than 1:6
