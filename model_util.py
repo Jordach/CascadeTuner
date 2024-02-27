@@ -696,18 +696,20 @@ class StageC(nn.Module):
 
     def forward(self, x, r, clip_text, clip_text_pooled, clip_img, cnet=None, **kwargs):
         # Process the conditioning embeddings
-        r_embed = self.gen_r_embedding(r)
+
+		# TODO One of these gradient checkpoints returns a None gradient; try one at a time.
+        r_embed = torch.utils.checkpoint.checkpoint(self.gen_r_embedding, r, use_reentrant=True)
         for c in self.t_conds:
             t_cond = kwargs.get(c, torch.zeros_like(r))
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
-        clip = self.gen_c_embeddings(clip_text, clip_text_pooled, clip_img)
+        clip = torch.utils.checkpoint.checkpoint(self.gen_c_embeddings, clip_text, clip_text_pooled, clip_img, use_reentrant=True)
 
         # Model Blocks
-        x = self.embedding(x)
+        x = torch.utils.checkpoint.checkpoint(self.embedding, x, use_reentrant=True)
         if cnet is not None:
-            cnet = ControlNetDeliverer(cnet)
-        level_outputs = self._down_encode(x, r_embed, clip, cnet)
-        x = self._up_decode(level_outputs, r_embed, clip, cnet)
+            cnet = torch.utils.checkpoint.checkpoint(ControlNetDeliverer, cnet)
+        level_outputs = torch.utils.checkpoint.checkpoint(self._down_encode, x, r_embed, clip, cnet, use_reentrant=True)
+        x = torch.utils.checkpoint.checkpoint(self._up_decode, level_outputs, r_embed, clip, cnet, use_reentrant=True)
         return self.clf(x)
 
     def update_weights_ema(self, src_model, beta=0.999):

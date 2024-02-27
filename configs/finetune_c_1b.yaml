@@ -38,7 +38,8 @@ optimizer_type: AdamW8bit
 # ema_iters: 100
 # ema_beta: 0.9
 
-local_dataset_path: [F:\novelai, F:\Waifusion]
+local_dataset_path: [F:\novelai]
+#local_dataset_path: [F:\novelai, F:\Waifusion]
 reject_aspects: 3.75
 dropout: 0.1
 effnet_checkpoint_path: models/effnet_encoder.safetensors

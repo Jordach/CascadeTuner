@@ -143,14 +143,16 @@ def main():
 			gdf.loss_weight.bucket_ranges = torch.tensor(info["adaptive_loss"]["bucket_ranges"])
 			gdf.loss_weight.bucket_losses = torch.tensor(info["adaptive_loss"]["bucket_losses"])
 
-	hf_accel_dtype = settings["dtype"]
-	if settings["dtype"] == "bfloat16":
+	main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
+
+	hf_accel_dtype = ""
+	if main_dtype is torch.bfloat16:
 		hf_accel_dtype = "bf16"
 	elif settings["dtype"] == "tf32":
 		hf_accel_dtype = "no"
 		torch.backends.cuda.matmul.allow_tf32 = True
 		torch.backends.cudnn.allow_tf32 = True
-	elif settings["dtype"] != "fp16" or settings["dtype"] != "fp32":
+	else:
 		hf_accel_dtype = "no"
 	
 	accelerator = Accelerator(
@@ -263,21 +265,13 @@ def main():
 	)
 
 	# Setup Models:
-	main_dtype = getattr(torch, settings["dtype"]) if settings["dtype"] else torch.float32
-
 	# EfficientNet
+	print("Loading EfficientNetEncoder")
 	effnet = EfficientNetEncoder()
 	effnet_checkpoint = load_or_fail(settings["effnet_checkpoint_path"])
 	effnet.load_state_dict(effnet_checkpoint if "state_dict" not in effnet_checkpoint else effnet_checkpoint["state_dict"])
-	effnet.eval().requires_grad_(False).to(accelerator.device)
+	effnet.eval().requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	del effnet_checkpoint
-
-	# Previewer (Not used?)
-	# previewer = Previewer()
-	# previewer_checkpoint = load_or_fail(settings["previewer_checkpoint_path"])
-	# previewer.load_state_dict(previewer_checkpoint if "state_dict" not in previewer_checkpoint else previewer_checkpoint["state_dict"])
-	# previewer.eval().requires_grad_(False).to(accelerator.device)
-	# del previewer_checkpoint
 
 	# Special things
 	@contextmanager
@@ -285,6 +279,7 @@ def main():
 		yield None
 
 	# Load in Stage C/B	
+	print("Loading Stage C Model.")
 	with loading_context():
 		if "model_version" not in settings:
 			raise ValueError('model_version key is missing from supplied YAML.')
@@ -304,6 +299,9 @@ def main():
 	if "generator_checkpoint_path" in settings:
 		# generator.load_state_dict(load_or_fail(settings["generator_checkpoint_path"]))
 		generator = load_model(generator, model_id=None, full_path=settings["generator_checkpoint_path"])
+		# import optree
+		# optree.tree_map(lambda x: print(x.dtype), generator.state_dict())
+		# return
 	else:
 		generator = load_model(generator, model_id='generator')
 	generator = generator.to(accelerator.device, dtype=main_dtype)
@@ -314,8 +312,10 @@ def main():
 		generator_ema.to(accelerator.device, dtype=main_dtype)
 	
 	# CLIP Encoders
+	print("Loading CLIP Text Encoder")
 	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	text_model.eval()
+	print("Loading CLIP Image Encoder")
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	image_model.eval()
 
@@ -432,7 +432,8 @@ def main():
 					image_embeddings = image_embeddings.unsqueeze(1)
 
 				# Get Latents
-				latents = effnet(effnet_preprocess(images))
+				latents = effnet(effnet_preprocess(images.to(dtype=main_dtype)))
+				latents = latents.to(dtype=main_dtype)
 				noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents, shift=1, loss_shift=1)
 				
 				# Forwards Pass

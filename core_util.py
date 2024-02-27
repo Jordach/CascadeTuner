@@ -63,7 +63,6 @@ def safe_save(ckpt, path, iter):
     else:
         raise ValueError(f"File extension not supported: {path}")
 
-
 def load_or_fail(path, wandb_run_id=None):
     accepted_extensions = [".pt", ".ckpt", ".json", ".safetensors"]
     try:
