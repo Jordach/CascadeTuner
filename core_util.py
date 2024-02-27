@@ -14,6 +14,7 @@ import dataclasses
 from dataclasses import dataclass, _MISSING_TYPE
 from torch.utils.data import Dataset, DataLoader
 import subprocess
+from tqdm import tqdm
 
 from torch.distributed import init_process_group, destroy_process_group, barrier
 from torch.distributed.fsdp import (
@@ -39,7 +40,7 @@ def create_folder_if_necessary(path):
     path = "/".join(path.split("/")[:-1])
     Path(path).mkdir(parents=True, exist_ok=True)
 
-def safe_save(ckpt, path, iter):
+def safe_save(ckpt, path, iter, accelerator=None):
     '''
     try:
         os.remove(f"{path}.bak")
@@ -59,7 +60,9 @@ def safe_save(ckpt, path, iter):
             json.dump(ckpt, f, indent=4)
     elif path.endswith(".safetensors"):
         path = path.replace(".safetensors", f'-{iter}.safetensors')
+        #accelerator.save_model(ckpt, output_dir=path, safe_serialization=True)
         safetensors.torch.save_file(ckpt, path)
+        tqdm.write(f"Saved model as: {path}")
     else:
         raise ValueError(f"File extension not supported: {path}")
 
@@ -126,7 +129,7 @@ def save_model(model, model_id=None, full_path=None, accelerator=None, settings=
 			)
 		create_folder_if_necessary(full_path)
 		checkpoint = model.state_dict()
-		safe_save(checkpoint, full_path, step)
+		safe_save(checkpoint, full_path, step, accelerator=accelerator)
 		del checkpoint
 
 # Data

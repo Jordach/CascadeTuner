@@ -11,7 +11,7 @@ dtype: bfloat16
 
 # TRAINING PARAMS
 lr: 5.0e-6
-batch_size: 4
+batch_size: 16
 image_size: 1024
 num_epochs: 5
 save_every_n_epochs: 1

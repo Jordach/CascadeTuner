@@ -1,3 +1,4 @@
+import time
 import torch
 import torchvision
 from torch import nn, optim
@@ -319,12 +320,6 @@ def main():
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	image_model.eval()
 
-	# if accelerator.is_main_process:
-	# 	print(yaml.dump(settings, default_flow_style=False))
-	# 	print()
-	# 	print(yaml.dump(info, default_flow_style=False))
-	# 	print()
-
 	# Load optimizers
 	optimizer_type = settings["optimizer_type"].lower()
 	optimizer_kwargs = {}
@@ -347,7 +342,7 @@ def main():
 
 	# Load scheduler
 	scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=settings["warmup_updates"])
-	scheduler.last_epoch = info["total_steps"] if "total_steps" in info else None
+	scheduler.last_epoch = info["total_steps"] if "total_steps" in info else len(dataloader)
 
 	accelerator.prepare(generator, dataloader, text_model, image_model, optimizer, scheduler)
 
@@ -362,8 +357,8 @@ def main():
 		token_chunks_limit = 1
 
 	# Training loop
-	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epoch")
 	steps_bar = tqdm(dataloader, desc="Steps to Epoch")
+	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epoch")
 	step_count = 1
 
 	generator.train()
@@ -372,7 +367,6 @@ def main():
 		current_step = 0
 		for batch in steps_bar:
 			with accelerator.accumulate(generator):
-				# Forwards Pass
 				captions = batch["tokens"]
 				images = batch["images"]
 				dropout = batch["dropout"]
@@ -452,6 +446,7 @@ def main():
 				accelerator.backward(loss_adjusted)
 				grad_norm = nn.utils.clip_grad_norm_(generator.parameters(), 1.0)
 				optimizer.step()
+				scheduler.step()
 				optimizer.zero_grad()
 
 				current_step += 1
@@ -471,7 +466,7 @@ def main():
 						"loss": loss_adjusted.mean().item(),
 						"ema_loss": info["ema_loss"],
 						"grad_norm": grad_norm.item(),
-						"lr": settings["lr"]
+						"lr": scheduler.get_last_lr()[0]
 					}
 
 					epoch_bar.set_postfix(logs)
@@ -480,7 +475,9 @@ def main():
 		if not e % settings["save_every_n_epochs"]:
 			if accelerator.is_main_process:
 				accelerator.wait_for_everyone()
-				save_model(generator if generator_ema is None else generator_ema, model_id = f"generator", settings=settings, accelerator=accelerator)
+				save_model(
+					accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
+					model_id = f"generator", settings=settings, accelerator=accelerator, step=e)
 
 if __name__ == "__main__":
 	main()
