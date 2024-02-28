@@ -2,3 +2,6 @@ __pycache__/*
 __pycache__/
 models/
 output/
+cache/
+.vscode/
+venv/

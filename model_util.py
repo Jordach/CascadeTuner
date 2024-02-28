@@ -9,6 +9,7 @@ import kornia
 import cv2
 from core_util import load_or_fail
 import warnings
+from flash_attn.modules.mha import MHA
 
 # Common
 class Linear(torch.nn.Linear):
@@ -18,7 +19,15 @@ class Linear(torch.nn.Linear):
 class Conv2d(torch.nn.Conv2d):
     def reset_parameters(self):
         return None
+    
+class FlashAttention2D(nn.Module):
+    def __init__(self, c, nhead, dropout=0.0):
+        super().__init__()
+        self.attn = MHA(embed_dim=c, num_heads=nhead, dropout=dropout)
 
+    def forward(self, x, kv, self_attn=False):
+        return x
+        
 class Attention2D(nn.Module):
     def __init__(self, c, nhead, dropout=0.0):
         super().__init__()
@@ -75,11 +84,14 @@ class ResBlock(nn.Module):
         return x + x_res
 
 class AttnBlock(nn.Module):
-    def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
+    def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0, flash_attention=False):
         super().__init__()
         self.self_attn = self_attn
         self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
-        self.attention = Attention2D(c, nhead, dropout)
+        if flash_attention:
+            self.attention = FlashAttention2D(c, nhead, dropout) 
+        else:
+            self.attention = Attention2D(c, nhead, dropout)
         self.kv_mapper = nn.Sequential(
             nn.SiLU(),
             Linear(c_cond, c)
@@ -491,8 +503,9 @@ class StageC(nn.Module):
     def __init__(self, c_in=16, c_out=16, c_r=64, patch_size=1, c_cond=2048, c_hidden=[2048, 2048], nhead=[32, 32],
                  blocks=[[8, 24], [24, 8]], block_repeat=[[1, 1], [1, 1]], level_config=['CTA', 'CTA'],
                  c_clip_text=1280, c_clip_text_pooled=1280, c_clip_img=768, c_clip_seq=4, kernel_size=3,
-                 dropout=[0.1, 0.1], self_attn=True, t_conds=['sca', 'crp'], switch_level=[False], settings=None):
+                 dropout=[0.1, 0.1], self_attn=True, t_conds=['sca', 'crp'], switch_level=[False], settings=None, flash_attention=False):
         super().__init__()
+        flash_attention = flash_attention
         self.c_r = c_r
         self.t_conds = t_conds
         self.c_clip_seq = c_clip_seq
@@ -517,7 +530,7 @@ class StageC(nn.Module):
             if block_type == 'C':
                 return ResBlock(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
             elif block_type == 'A':
-                return AttnBlock(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout)
+                return AttnBlock(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout, flash_attention=flash_attention)
             elif block_type == 'F':
                 return FeedForwardBlock(c_hidden, dropout=dropout)
             elif block_type == 'T':

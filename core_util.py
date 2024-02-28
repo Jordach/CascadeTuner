@@ -129,6 +129,10 @@ def save_model(model, model_id=None, full_path=None, accelerator=None, settings=
 			)
 		create_folder_if_necessary(full_path)
 		checkpoint = model.state_dict()
+		        
+		if settings["flash_attention"]:
+			checkpoint = {k.replace('attn.Wqkv.','attn.in_proj_'): v for k, v in checkpoint.items()}
+                                        
 		safe_save(checkpoint, full_path, step, accelerator=accelerator)
 		del checkpoint
 

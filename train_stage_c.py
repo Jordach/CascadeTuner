@@ -55,9 +55,68 @@ def load_model(model, model_id=None, full_path=None, strict=True, settings=None)
 
 	ckpt = load_or_fail(full_path, wandb_run_id=None)
 	if ckpt is not None:
+
+		if settings["flash_attention"]:
+			ckpt = {k.replace('attn.in_proj_','attn.Wqkv.'): v for k, v in ckpt.items()}
+
 		model.load_state_dict(ckpt, strict=strict)
 		del ckpt
 	return model
+
+
+def text_cache(dropout, text_model, accelerator, captions, tokenizer, settings):
+	
+	text_embeddings = None
+	text_embeddings_pool = None
+	batch_size = settings["batch_size"]
+
+	# Token concatenation things:
+	max_length = tokenizer.model_max_length
+	max_standard_tokens = max_length - 2
+	token_chunks_limit = math.ceil(settings["max_token_limit"] / max_standard_tokens)
+	if token_chunks_limit < 1:
+		token_chunks_limit = 1
+
+	if dropout:
+		captions_unpooled = ["" for _ in range(batch_size)]
+		clip_tokens_unpooled = tokenizer(captions_unpooled, truncation=True, padding="max_length",
+										max_length=models.tokenizer.model_max_length,
+										return_tensors="pt").to(accelerator.device)
+		text_encoder_output = text_model(**clip_tokens_unpooled, output_hidden_states=True)
+		text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
+		text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
+	else:
+		true_len = max(len(x) for x in captions)
+		n_chunks = np.ceil(true_len / max_standard_tokens).astype(int)
+		max_len = n_chunks.item() * max_standard_tokens
+
+		token_copy = captions.detach().clone()
+		for i, x in enumerate(token_copy):
+			if len(x) < max_len:
+				token_copy[i] = [*x, *np.full((max_len - len(x)), tokenizer.eos_token_id)]
+			del i, x
+		
+		chunks = [token_copy[:, i:i + max_standard_tokens] for i in range(0, max_len, max_standard_tokens)]
+		n_processed = 0
+		for chunk in chunks:
+			# Hard limit the tokens to fit in memory for the rare event that latent caches that somehow exceed the limit.
+			if n_processed > (token_chunks_limit):
+				del chunk
+				break
+
+			chunk = chunk.to(accelerator.device)
+			chunk = torch.cat((torch.full((chunk.shape[0], 1), tokenizer.bos_token_id).to(accelerator.device), chunk, torch.full((chunk.shape[0], 1), tokenizer.eos_token_id).to(accelerator.device)), 1)
+			text_encoder_output = text_model(chunk, output_hidden_states=True)
+			if text_embeddings is None:
+				text_embeddings = text_encoder_output["hidden_states"][settings["clip_skip"]]
+				text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
+			else:
+				text_embeddings = torch.cat((text_embeddings, text_encoder_output["hidden_states"][settings["clip_skip"]]), dim=-2)
+				text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2)
+			n_processed += 1
+		del chunks, token_copy
+
+	return text_embeddings, text_embeddings_pool
 
 # Replaced WarpCore with a more simplified version of it
 # made compatible with HF Accelerate
@@ -79,6 +138,7 @@ def main():
 	settings["create_latent_cache"] = False
 	settings["use_latent_cache"] = False
 	settings["seed"] = 123
+	settings["flash_attention"] = False
 	settings["multi_aspect_ratio"] = [1/1, 1/2, 1/3, 2/3, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 9/16]
 	
 	gdf_loss_weight = P2LossWeight()
@@ -203,6 +263,8 @@ def main():
 			else:
 				raise ValueError("'local_dataset_path' must either be a string, or list of strings containing paths.")
 
+		print("Buckets")
+
 		pre_dataset.bucketize(settings["batch_size"])
 		print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
 		settings["multi_aspect_ratio"] = pre_dataset.get_buckets()
@@ -285,9 +347,9 @@ def main():
 	set_seed(settings["seed"])
 	if not settings["create_latent_cache"]:
 		random.shuffle(dataset)
-		dataloader = DataLoader(
-			dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
-		)
+	dataloader = DataLoader(
+		dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
+	)
 
 	# Optional Latent Caching Step:
 	def latent_collate(batch):
@@ -295,6 +357,11 @@ def main():
 		if "dropout" in batch:
 			cache[0]["dropout"] = True
 		return cache
+	
+	# CLIP Text Encoder
+	print("Loading CLIP Text Encoder")
+	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
+	text_model.eval()
 
 	latent_cache = []
 	# Create a latent cache if we're not going to load an existing one.
@@ -304,10 +371,11 @@ def main():
 		for batch in tqdm(dataloader, desc="Latent Caching"):
 			batch["effnet_cache"] = effnet(effnet_preprocess(batch["images"].to(dtype=main_dtype)))
 			batch["clip_cache"] = image_model(clip_preprocess(batch["images"])).image_embeds
+			batch["text_cache"] = text_cache(False, text_model, accelerator, batch["tokens"], tokenizer, settings)
 			del batch["images"]
 			torch.save(batch, os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt"))
-			step += 1
 			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt")})
+			step += 1
 	
 	elif settings["use_latent_cache"]:
 		# Load all latent caches from disk. Note that batch size is ignored here and can theoretically be mixed.
@@ -329,6 +397,7 @@ def main():
 				new_dropouts = copy.deepcopy(dropouts)
 				for batch in new_dropouts:
 					batch["dropout"] = True
+					batch["text_cache"] = text_cache(True, text_model, accelerator, batch["tokens"], tokenizer, settings)
 				latent_cache.extend(new_dropouts)
 				print(f"Duplicated {len(new_dropouts)} caches for caption dropout.")
 				print(f"Total Cached Step Count: {len(latent_cache)}")
@@ -349,37 +418,33 @@ def main():
 		if "model_version" not in settings:
 			raise ValueError('model_version key is missing from supplied YAML.')
 		
+		flash_attention = settings["flash_attention"]
 		generator_ema = None
 		if settings["model_version"] == "3.6B":
-			generator = StageC()
+			generator = StageC(flash_attention=flash_attention)
 			if "ema_start_iters" in settings:
-				generator_ema = StageC()
+				generator_ema = StageC(flash_attention=flash_attention)
 		elif settings["model_version"] == "1B":
-			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]])
+			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
 			if "ema_start_iters" in settings:
-				generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]])
+				generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
 		else:
 			raise ValueError(f"Unknown model size: {settings['model_version']}, stopping.")
 
 	if "generator_checkpoint_path" in settings:
 		# generator.load_state_dict(load_or_fail(settings["generator_checkpoint_path"]))
-		generator = load_model(generator, model_id=None, full_path=settings["generator_checkpoint_path"])
+		generator = load_model(generator, model_id=None, full_path=settings["generator_checkpoint_path"], settings=settings)
 		# import optree
 		# optree.tree_map(lambda x: print(x.dtype), generator.state_dict())
 		# return
 	else:
-		generator = load_model(generator, model_id='generator')
+		generator = load_model(generator, model_id='generator', settings=settings)
 	generator = generator.to(accelerator.device, dtype=main_dtype)
 
 	if generator_ema is not None:
 		generator_ema.load_state_dict(generator.state_dict())
-		generator_ema = load_model(generator_ema, "generator_ema")
+		generator_ema = load_model(generator_ema, "generator_ema", settings=settings)
 		generator_ema.to(accelerator.device, dtype=main_dtype)
-	
-	# CLIP Text Encoder
-	print("Loading CLIP Text Encoder")
-	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
-	text_model.eval()
 
 	# Load optimizers
 	optimizer_type = settings["optimizer_type"].lower()
@@ -410,13 +475,6 @@ def main():
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
 
-	# Token concatenation things:
-	max_length = tokenizer.model_max_length
-	max_standard_tokens = max_length - 2
-	token_chunks_limit = math.ceil(settings["max_token_limit"] / max_standard_tokens)
-	if token_chunks_limit < 1:
-		token_chunks_limit = 1
-
 	# Training loop
 	steps_bar = tqdm(dataloader, desc="Steps to Epoch")
 	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epoch")
@@ -431,6 +489,10 @@ def main():
 	is_latent_cache = False
 	if settings["use_latent_cache"] or settings["create_latent_cache"]:
 		is_latent_cache = True
+		del image_model
+		del text_model
+		del effnet
+		torch.cuda.empty_cache()
 
 	with accelerator.accumulate(generator):
 		for e in epoch_bar:
@@ -441,49 +503,9 @@ def main():
 				dropout = batch["dropout"]
 				batch_size = settings["batch_size"]
 
-				# Handle Text Encoding
-				text_embeddings = None
-				text_embeddings_pool = None
-
 				with torch.no_grad():
-					if dropout:
-						captions_unpooled = ["" for _ in range(batch_size)]
-						clip_tokens_unpooled = tokenizer(captions_unpooled, truncation=True, padding="max_length",
-														max_length=models.tokenizer.model_max_length,
-														return_tensors="pt").to(accelerator.device)
-						text_encoder_output = text_model(**clip_tokens_unpooled, output_hidden_states=True)
-						text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
-						text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
-					else:
-						true_len = max(len(x) for x in captions)
-						n_chunks = np.ceil(true_len / max_standard_tokens).astype(int)
-						max_len = n_chunks.item() * max_standard_tokens
-
-						token_copy = captions.detach().clone()
-						for i, x in enumerate(token_copy):
-							if len(x) < max_len:
-								token_copy[i] = [*x, *np.full((max_len - len(x)), tokenizer.eos_token_id)]
-							del i, x
-						
-						chunks = [token_copy[:, i:i + max_standard_tokens] for i in range(0, max_len, max_standard_tokens)]
-						n_processed = 0
-						for chunk in chunks:
-							# Hard limit the tokens to fit in memory for the rare event that latent caches that somehow exceed the limit.
-							if n_processed > (token_chunks_limit):
-								del chunk
-								break
-
-							chunk = chunk.to(accelerator.device)
-							chunk = torch.cat((torch.full((chunk.shape[0], 1), tokenizer.bos_token_id).to(accelerator.device), chunk, torch.full((chunk.shape[0], 1), tokenizer.eos_token_id).to(accelerator.device)), 1)
-							text_encoder_output = text_model(chunk, output_hidden_states=True)
-							if text_embeddings is None:
-								text_embeddings = text_encoder_output["hidden_states"][settings["clip_skip"]]
-								text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
-							else:
-								text_embeddings = torch.cat((text_embeddings, text_encoder_output["hidden_states"][settings["clip_skip"]]), dim=-2)
-								text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2)
-							n_processed += 1
-						del chunks, token_copy
+					text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, tokenizer, settings) if not is_latent_cache else batch["text_cache"]
+					
 					
 				# Handle Image Encoding
 				image_embeddings = torch.zeros(batch_size, 768, device=accelerator.device, dtype=main_dtype)
