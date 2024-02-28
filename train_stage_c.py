@@ -76,6 +76,10 @@ def main():
 	settings["save_every_n_epoch"] = 1
 	settings["clip_skip"] = -1
 	settings["max_token_limit"] = 75
+	settings["create_latent_cache"] = False
+	settings["use_latent_cache"] = False
+	settings["seed"] = 123
+	settings["multi_aspect_ratio"] = [1/1, 1/2, 1/3, 2/3, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 9/16]
 	
 	gdf_loss_weight = P2LossWeight()
 	if "adaptive_loss_weight" in settings:
@@ -136,7 +140,7 @@ def main():
 	full_path = f"{settings['checkpoint_path']}/{settings['experiment_id']}/info.json"
 	info_dict = load_or_fail(full_path, wandb_run_id=None) or {}
 	info = info | info_dict
-	set_seed(settings["seed"] if "seed" in settings else 123)
+	set_seed(settings["seed"])
 
 	# Setup GDF buckets when resuming a training run
 	if "adaptive_loss" in info:
@@ -162,27 +166,46 @@ def main():
 		log_with="tensorboard",
 		project_dir=f"{settings['output_path']}"
 	)
+	# For Latent Caching
+	# EfficientNet
+	print("Loading EfficientNetEncoder")
+	effnet = EfficientNetEncoder()
+	effnet_checkpoint = load_or_fail(settings["effnet_checkpoint_path"])
+	effnet.load_state_dict(effnet_checkpoint if "state_dict" not in effnet_checkpoint else effnet_checkpoint["state_dict"])
+	effnet.eval().requires_grad_(False).to(accelerator.device, dtype=main_dtype)
+	del effnet_checkpoint
 
-	# Setup Dataloader:
-	print("Loading Dataset[s].")
+	print("Loading CLIP Image Encoder")
+	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
+	image_model.eval()
+
+
+	pre_dataset = []
+	# Create second dataset so all images are batched if we're either caching latents or 
+	dataset = []
+
 	tokenizer = AutoTokenizer.from_pretrained(settings["clip_text_model_name"])
-	pre_dataset = BucketWalker(
-		reject_aspects=settings["reject_aspects"],
-		tokenizer=tokenizer
-	)
+	# Setup Dataloader:
+	# Only load from the dataloader when not latent caching
+	if not settings["use_latent_cache"]:
+		print("Loading Dataset[s].")
+		pre_dataset = BucketWalker(
+			reject_aspects=settings["reject_aspects"],
+			tokenizer=tokenizer
+		)
 
-	if "local_dataset_path" in settings:
-		if type(settings["local_dataset_path"]) is list:
-			for dir in settings["local_dataset_path"]:
-				pre_dataset.scan_folder(dir)
-		elif type(settings["local_dataset_path"]) is str:
-			pre_dataset.scan_folder(settings["local_dataset_path"])
-		else:
-			raise ValueError("'local_dataset_path' must either be a string, or list of strings containing paths.")
+		if "local_dataset_path" in settings:
+			if type(settings["local_dataset_path"]) is list:
+				for dir in settings["local_dataset_path"]:
+					pre_dataset.scan_folder(dir)
+			elif type(settings["local_dataset_path"]) is str:
+				pre_dataset.scan_folder(settings["local_dataset_path"])
+			else:
+				raise ValueError("'local_dataset_path' must either be a string, or list of strings containing paths.")
 
-	pre_dataset.bucketize(settings["batch_size"])
-	print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
-	settings["multi_aspect_ratio"] = pre_dataset.get_buckets()
+		pre_dataset.bucketize(settings["batch_size"])
+		print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
+		settings["multi_aspect_ratio"] = pre_dataset.get_buckets()
 
 	def pre_collate(batch):
 		# Do NOT load images - save that for the second dataloader pass
@@ -213,13 +236,13 @@ def main():
 		return {"images": images, "tokens": batch_tokens, "caption": caption, "aspects": aspects, "dropout": False}
 
 	pre_dataloader = DataLoader(
-	 	pre_dataset, batch_size=settings["batch_size"], shuffle=False, collate_fn=pre_collate, pin_memory=False,
+		pre_dataset, batch_size=settings["batch_size"], shuffle=False, collate_fn=pre_collate, pin_memory=False,
 	)
 
-	# Create second dataset so all images are batched
-	dataset = []
-	for batch in pre_dataloader:
-		dataset.append(batch)
+	# Skip dataloading pass if we're using a latent cache
+	if not settings["use_latent_cache"]:
+		for batch in pre_dataloader:
+			dataset.append(batch)
 
 	auto_bucketer = Bucketeer(
 		density=settings["image_size"] ** 2,
@@ -229,10 +252,10 @@ def main():
 		transforms=torchvision.transforms.ToTensor(),
 	)
 
-	# Add duplicate dropout batches with a sufficient amount of steps
-	if "dropout" in settings and settings["dropout"] > 0:
+	# Add duplicate dropout batches with a sufficient amount of steps only when not creating or using a latent cache
+	if settings["dropout"] > 0 and not (settings["use_latent_cache"] or settings["create_latent_cache"]):
 		dataset_len = len(dataset)
-		if dataset_len > 100:
+		if dataset_len > 100 and not settings["create_latent_cache"]:
 			dropouts = random.sample(dataset, int(dataset_len * settings["dropout"]))
 			new_dropouts = copy.deepcopy(dropouts)
 			for batch in new_dropouts:
@@ -252,27 +275,69 @@ def main():
 		for i in range(0, len(batch[0]["images"])):
 			images.append(auto_bucketer.load_and_resize(img[i], float(aspects[i])))
 		images = torch.stack(images)
-		images = images.to(memory_format=torch.contiguous_format).float()
+		images = images.to(memory_format=torch.contiguous_format)
 		images = images.to(accelerator.device)
 		tokens = batch[0]["tokens"]
 		captions = batch[0]["caption"]
 		return {"images": images, "tokens": tokens, "captions": captions, "dropout": False}
 
-	# Shuffle the dataset
+	# Shuffle the dataset and initialise the dataloader if we're not latent caching
 	set_seed(settings["seed"])
-	random.shuffle(dataset)
-	dataloader = DataLoader(
-		dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
-	)
+	if not settings["create_latent_cache"]:
+		random.shuffle(dataset)
+		dataloader = DataLoader(
+			dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
+		)
 
-	# Setup Models:
-	# EfficientNet
-	print("Loading EfficientNetEncoder")
-	effnet = EfficientNetEncoder()
-	effnet_checkpoint = load_or_fail(settings["effnet_checkpoint_path"])
-	effnet.load_state_dict(effnet_checkpoint if "state_dict" not in effnet_checkpoint else effnet_checkpoint["state_dict"])
-	effnet.eval().requires_grad_(False).to(accelerator.device, dtype=main_dtype)
-	del effnet_checkpoint
+	# Optional Latent Caching Step:
+	def latent_collate(batch):
+		cache = torch.load(batch[0]["path"])
+		if "dropout" in batch:
+			print(cache)
+			cache[0]["dropout"] = True
+		return cache
+
+	latent_cache = []
+	# Create a latent cache if we're not going to load an existing one.
+	if settings["create_latent_cache"] and not settings["use_latent_cache"]:
+		create_folder_if_necessary(settings["latent_cache_location"])
+		step = 0
+		for batch in tqdm(dataloader, desc="Latent Caching"):
+			batch["effnet_cache"] = effnet(effnet_preprocess(batch["images"].to(dtype=main_dtype)))
+			batch["clip_cache"] = image_model(clip_preprocess(batch["images"])).image_embeds
+			del batch["images"]
+			torch.save(batch, os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt"))
+			step += 1
+			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt")})
+	
+	elif settings["use_latent_cache"]:
+		# Load all latent caches from disk. Note that batch size is ignored here and can theoretically be mixed.
+		if not os.path.exists(settings["latent_cache_location"]):
+			raise Exception("Latent Cache folder does not exist. Please run latent caching first.")
+
+		if len(os.listdir(settings["latent_cache_location"])) == 0:
+			raise Exception("No latent caches to load. Please run latent caching first.")
+		
+		print("Loading media from the Latent Cache.")
+		for cache in os.listdir(settings["latent_cache_location"]):
+			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], cache)})
+
+	if settings["create_latent_cache"] or settings["use_latent_cache"]:
+		# Handle duplicates for Latent Caching
+		if settings["dropout"] > 0:
+			if len(latent_cache) > 100:
+				dropouts = random.sample(latent_cache, int(len(latent_cache) * settings["dropout"]))
+				new_dropouts = copy.deepcopy(dropouts)
+				for batch in new_dropouts:
+					batch["dropout"] = True
+				latent_cache.extend(new_dropouts)
+				print(f"Duplicated {len(new_dropouts)} caches for caption dropout.")
+				print(f"Total Cached Step Count: {len(latent_cache)}")
+		
+		random.shuffle(latent_cache)
+		dataloader = DataLoader(
+			latent_cache, batch_size=1, collate_fn=latent_collate, shuffle=False, pin_memory=False
+		)
 
 	# Special things
 	@contextmanager
@@ -312,13 +377,10 @@ def main():
 		generator_ema = load_model(generator_ema, "generator_ema")
 		generator_ema.to(accelerator.device, dtype=main_dtype)
 	
-	# CLIP Encoders
+	# CLIP Text Encoder
 	print("Loading CLIP Text Encoder")
 	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	text_model.eval()
-	print("Loading CLIP Image Encoder")
-	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
-	image_model.eval()
 
 	# Load optimizers
 	optimizer_type = settings["optimizer_type"].lower()
@@ -363,12 +425,20 @@ def main():
 
 	generator.train()
 	total_steps = 0
-	for e in epoch_bar:
-		current_step = 0
-		for batch in steps_bar:
-			with accelerator.accumulate(generator):
+
+	# Special case for handling latent caching
+	# saves one second of time to avoid expensive key checking
+	# We enable this if we've just finished latent caching and want to immediately start training thereafter
+	is_latent_cache = False
+	if settings["use_latent_cache"] or settings["create_latent_cache"]:
+		is_latent_cache = True
+
+	with accelerator.accumulate(generator):
+		for e in epoch_bar:
+			current_step = 0
+			for batch in steps_bar:
 				captions = batch["tokens"]
-				images = batch["images"]
+				images = batch["images"] if not is_latent_cache else None
 				dropout = batch["dropout"]
 				batch_size = settings["batch_size"]
 
@@ -417,16 +487,16 @@ def main():
 						del chunks, token_copy
 					
 				# Handle Image Encoding
-				image_embeddings = torch.zeros(batch_size, 768, device=accelerator.device, dtype=torch.float32)
+				image_embeddings = torch.zeros(batch_size, 768, device=accelerator.device, dtype=main_dtype)
 				with torch.no_grad():
 					if not dropout:
 						rand_id = np.random.rand(batch_size) > 0.9
 						if any(rand_id):
-							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id])).image_embeds
+							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id])).image_embeds if not is_latent_cache else batch["clip_cache"][rand_id]
 					image_embeddings = image_embeddings.unsqueeze(1)
 
 				# Get Latents
-				latents = effnet(effnet_preprocess(images.to(dtype=main_dtype)))
+				latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch["effnet_cache"]
 				latents = latents.to(dtype=main_dtype)
 				noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents, shift=1, loss_shift=1)
 				
@@ -458,13 +528,10 @@ def main():
 						generator_ema, generator,
 						beta=(settings["ema_beta"] if current_step > settings["ema_start_iters"] else 0)
 					)
-				
-				info["ema_loss"] = loss.mean().item() if "ema_loss" not in info else info["ema_loss"] * 0.99 + loss.mean().item() * 0.01
 
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
-						"ema_loss": info["ema_loss"],
 						"grad_norm": grad_norm.item(),
 						"lr": scheduler.get_last_lr()[0]
 					}
@@ -472,12 +539,12 @@ def main():
 					epoch_bar.set_postfix(logs)
 					accelerator.log(logs, step=total_steps)
 		
-		if not e % settings["save_every_n_epochs"]:
+		if not e % settings["save_every_n_epoch"]:
 			if accelerator.is_main_process:
 				accelerator.wait_for_everyone()
 				save_model(
 					accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
-					model_id = f"generator", settings=settings, accelerator=accelerator, step=e)
+					model_id = f"generator", settings=settings, accelerator=accelerator, step=f"e{e}")
 
 if __name__ == "__main__":
 	main()

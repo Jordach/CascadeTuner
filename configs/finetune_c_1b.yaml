@@ -1,47 +1,85 @@
-# GLOBAL STUFF
+# TODO: Make sensible
 experiment_id: stage_c_1b_finetuning
 checkpoint_path: output
 output_path: output
+
+# Stage C parameters:
+# Valid settings: 1B or 3.6B
 model_version: 1B
+
+# The checkpoints that are used for training.
+effnet_checkpoint_path: models/effnet_encoder.safetensors
+# Note: stage_c_lite_bf16 is the 1B model, while stage_c_bf16 is the 3.6B model.
+generator_checkpoint_path: models/stage_c_lite_bf16.safetensors
+
+# The precision of the model.
+# Preferred: bfloat16
+# Usable: bfloat16, float32
 dtype: bfloat16
 
-# WandB
-# wandb_project: StableCascade
-# wandb_entity: wandb_username
-
-# TRAINING PARAMS
+# The learning rate.
 lr: 5.0e-6
+
+# The batch size.
 batch_size: 16
+
+# The trained image size. Must be a multiple of 32.
 image_size: 1024
+
+# How many epochs should be trained in total?
 num_epochs: 5
-save_every_n_epochs: 1
+
+# How many epochs should pass before saving the model?
+save_every_n_epoch: 1
+
+# How many forwards steps can the model make before performing a backwards pass?
 grad_accum_steps: 1
-updates: 2000
-backup_every: 20000
+
+# How many training steps can pass before saving a copy of the model?
 save_every: 500
+
+# How many steps should the learning rate warm up by?
 warmup_updates: 1
-use_fsdp: False
+
+# Set a seed number of your choosing
 seed: 69
-clip_skip: -1
+
+# How many tokens should the model concatenate out to?
 max_token_limit: 900
-cache_latents: false
+
+# On Linux, this will enable Pytorch specific optimisations for Ampere or later GPUs. (RTX 30x0 or A100)
+# This option has no effect on Windows 10 and 11.
 #use_pytorch_cross_attention: true
 
-# OPTIMIZER
+# Which optimiser you prefer using.
 # Options: AdamW, AdamW8bit, Adafactor
 optimizer_type: AdamW8bit
 
-# GDF
+# This does something important for the 3.6B model, but is entirely useless for the 1B model.
 # adaptive_loss_weight: True
 
+# All three options must be present to use EMA weights
 # ema_start_iters: 5000
 # ema_iters: 100
 # ema_beta: 0.9
 
-local_dataset_path: [F:\novelai]
-#local_dataset_path: [F:\novelai, F:\Waifusion]
+# Where files are located - to repeat a folder, add it again.
+# local_dataset_path: [F:\novelai]
+local_dataset_path: [F:\novelai, F:\Waifusion, F:\Fluffvision\images]
+
+# Will always ignore local_dataset_path, create_latent_cache and other dataloaders if set to true
+use_latent_cache: false
+
+# Must be present when using an existing latent cache or creating one
+# This value can be empty when not being used by use_latent_cache or create_latent_cache
+latent_cache_location: F:\latent_cache
+
+# Whether to create a latent cache from any of the dataloaders
+create_latent_cache: true
+
+# Whether to reject images exceeding 1:x.yz ratio (Images will be tested as if they're portrait oriented - data will not be modified)
 reject_aspects: 3.75
+
+# The percentage of batches that must be duplicated for dropout purposes
+# 0.1 = 10%, 1 = 100%
 dropout: 0.1
-effnet_checkpoint_path: models/effnet_encoder.safetensors
-previewer_checkpoint_path: models/previewer.safetensors
-generator_checkpoint_path: models/stage_c_lite_bf16.safetensors
