@@ -293,7 +293,6 @@ def main():
 	def latent_collate(batch):
 		cache = torch.load(batch[0]["path"])
 		if "dropout" in batch:
-			print(cache)
 			cache[0]["dropout"] = True
 		return cache
 
