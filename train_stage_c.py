@@ -138,6 +138,7 @@ def main():
 	settings["create_latent_cache"] = False
 	settings["use_latent_cache"] = False
 	settings["seed"] = 123
+	settings["use_pytorch_cross_attention"] = False
 	settings["flash_attention"] = False
 	settings["multi_aspect_ratio"] = [1/1, 1/2, 1/3, 2/3, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 9/16]
 	
@@ -184,12 +185,11 @@ def main():
 	else:
 		raise ValueError("No configuration supplied, stopping.")
 
-	if "use_pytorch_cross_attention" in settings:
-		if settings["use_pytorch_cross_attention"]:
-			print("Activating efficient cross attentions.")
-			torch.backends.cuda.enable_math_sdp(True)
-			torch.backends.cuda.enable_flash_sdp(True)
-			torch.backends.cuda.enable_mem_efficient_sdp(True)
+	if settings["use_pytorch_cross_attention"]:
+		print("Activating efficient cross attentions.")
+		torch.backends.cuda.enable_math_sdp(True)
+		torch.backends.cuda.enable_flash_sdp(True)
+		torch.backends.cuda.enable_mem_efficient_sdp(True)
 
 	settings["transforms"] = torchvision.transforms.Compose([
 		torchvision.transforms.ToTensor(),

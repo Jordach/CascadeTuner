@@ -50,6 +50,7 @@ max_token_limit: 900
 # On Linux, this will enable Pytorch specific optimisations for Ampere or later GPUs. (RTX 30x0 or A100)
 # This option has no effect on Windows 10 and 11.
 #use_pytorch_cross_attention: true
+# Use this setting if you're on Windows - and follow the installation instructions in the readme.
 flash_attention: true
 
 # Which optimiser you prefer using.
@@ -65,8 +66,8 @@ optimizer_type: AdamW8bit
 # ema_beta: 0.9
 
 # Where files are located - to repeat a folder, add it again.
-# local_dataset_path: [F:\novelai]
-local_dataset_path: [F:\novelai, F:\Waifusion, F:\Fluffvision\images]
+local_dataset_path: [F:\novelai]
+# local_dataset_path: [F:\novelai, F:\Waifusion, F:\Fluffvision\images]
 
 # Will always ignore local_dataset_path, create_latent_cache and other dataloaders if set to true
 use_latent_cache: false
