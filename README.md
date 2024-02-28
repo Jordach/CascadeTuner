@@ -6,7 +6,7 @@ Implements a minimalistic version of Stable Cascade training
 Install Anaconda or Miniconda.
 
 At the terminal:
-`conda env create -f enviroment.yaml`
+`conda env create -f environment.yaml`
 Wait a bit, as it takes time to install.
 `conda activate CTuner`
 This will activate the virtual environment for CascadeTuner.
@@ -18,3 +18,6 @@ pip install https://github.com/jllllll/bitsandbytes-windows-webui/releases/downl
 
 # Launching your script:
 `accelerate launch --mixed_precision="bf16" train_stage_c.py --yaml "configs/your_yaml_here.yaml"`
+
+If it doesn't launch:
+`conda install -c defaults intel-openmp -f` usually fixes PIL issues under Windows 10/11.
