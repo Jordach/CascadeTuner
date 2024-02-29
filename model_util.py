@@ -10,6 +10,8 @@ import cv2
 from core_util import load_or_fail
 import warnings
 
+from xformers_util import FlashAttention2D
+
 # Common
 class Linear(torch.nn.Linear):
     def reset_parameters(self):
@@ -18,18 +20,6 @@ class Linear(torch.nn.Linear):
 class Conv2d(torch.nn.Conv2d):
     def reset_parameters(self):
         return None
-    
-class FlashAttention2D(nn.Module):
-    def __init__(self, c, nhead, dropout=0.0):
-        super().__init__()
-        try:
-            from flash_attn.modules.mha import MHA
-            self.attn = MHA(embed_dim=c, num_heads=nhead, dropout=dropout)
-        except ImportError:
-            raise ImportError("Please install Flash Attention 1 for Windows as shown in the readme.")
-
-    def forward(self, x, kv, self_attn=False):
-        return self.attn(x, kv)
         
 class Attention2D(nn.Module):
     def __init__(self, c, nhead, dropout=0.0):
