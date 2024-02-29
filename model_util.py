@@ -29,7 +29,7 @@ class FlashAttention2D(nn.Module):
             raise ImportError("Please install Flash Attention 1 for Windows as shown in the readme.")
 
     def forward(self, x, kv, self_attn=False):
-        return x
+        return self.attn(x, kv)
         
 class Attention2D(nn.Module):
     def __init__(self, c, nhead, dropout=0.0):

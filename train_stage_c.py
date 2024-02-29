@@ -64,11 +64,9 @@ def load_model(model, model_id=None, full_path=None, strict=True, settings=None)
 	return model
 
 
-def text_cache(dropout, text_model, accelerator, captions, tokenizer, settings):
-	
+def text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, batch_size):
 	text_embeddings = None
 	text_embeddings_pool = None
-	batch_size = settings["batch_size"]
 
 	# Token concatenation things:
 	max_length = tokenizer.model_max_length
@@ -80,7 +78,7 @@ def text_cache(dropout, text_model, accelerator, captions, tokenizer, settings):
 	if dropout:
 		captions_unpooled = ["" for _ in range(batch_size)]
 		clip_tokens_unpooled = tokenizer(captions_unpooled, truncation=True, padding="max_length",
-										max_length=models.tokenizer.model_max_length,
+										max_length=tokenizer.model_max_length,
 										return_tensors="pt").to(accelerator.device)
 		text_encoder_output = text_model(**clip_tokens_unpooled, output_hidden_states=True)
 		text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
@@ -136,11 +134,13 @@ def main():
 	settings["clip_skip"] = -1
 	settings["max_token_limit"] = 75
 	settings["create_latent_cache"] = False
+	settings["cache_text_encoder"] = False
 	settings["use_latent_cache"] = False
 	settings["seed"] = 123
 	settings["use_pytorch_cross_attention"] = False
 	settings["flash_attention"] = False
 	settings["multi_aspect_ratio"] = [1/1, 1/2, 1/3, 2/3, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 9/16]
+	settings["model_name"] = "untitled_model"
 	
 	gdf_loss_weight = P2LossWeight()
 	if "adaptive_loss_weight" in settings:
@@ -222,23 +222,26 @@ def main():
 	
 	accelerator = Accelerator(
 		gradient_accumulation_steps=settings["grad_accum_steps"],
-		mixed_precision=hf_accel_dtype,
 		log_with="tensorboard",
 		project_dir=f"{settings['output_path']}"
 	)
-	# For Latent Caching
+
+	# Model Loading For Latent Caching
 	# EfficientNet
 	print("Loading EfficientNetEncoder")
 	effnet = EfficientNetEncoder()
 	effnet_checkpoint = load_or_fail(settings["effnet_checkpoint_path"])
 	effnet.load_state_dict(effnet_checkpoint if "state_dict" not in effnet_checkpoint else effnet_checkpoint["state_dict"])
-	effnet.eval().requires_grad_(False).to(accelerator.device, dtype=main_dtype)
+	effnet.eval().requires_grad_(False).to(accelerator.device, dtype=torch.bfloat16)
 	del effnet_checkpoint
 
+	# CLIP Encoders
+	print("Loading CLIP Text Encoder")
+	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
+	text_model.eval()
 	print("Loading CLIP Image Encoder")
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	image_model.eval()
-
 
 	pre_dataset = []
 	# Create second dataset so all images are batched if we're either caching latents or 
@@ -352,16 +355,12 @@ def main():
 	)
 
 	# Optional Latent Caching Step:
+	te_dropout, pool_dropout = text_cache(True, text_model, accelerator, [], tokenizer, settings, settings["batch_size"])
 	def latent_collate(batch):
 		cache = torch.load(batch[0]["path"])
 		if "dropout" in batch:
 			cache[0]["dropout"] = True
 		return cache
-	
-	# CLIP Text Encoder
-	print("Loading CLIP Text Encoder")
-	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
-	text_model.eval()
 
 	latent_cache = []
 	# Create a latent cache if we're not going to load an existing one.
@@ -371,7 +370,10 @@ def main():
 		for batch in tqdm(dataloader, desc="Latent Caching"):
 			batch["effnet_cache"] = effnet(effnet_preprocess(batch["images"].to(dtype=main_dtype)))
 			batch["clip_cache"] = image_model(clip_preprocess(batch["images"])).image_embeds
-			batch["text_cache"] = text_cache(False, text_model, accelerator, batch["tokens"], tokenizer, settings)
+			if settings["cache_text_encoder"]:
+				te_cache, pool_cache = text_cache(False, text_model, accelerator, batch["tokens"], tokenizer, settings, settings["batch_size"])
+				batch["text_cache"] = te_cache
+				batch["pool_cache"] = pool_cache
 			del batch["images"]
 			torch.save(batch, os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt"))
 			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt")})
@@ -397,7 +399,6 @@ def main():
 				new_dropouts = copy.deepcopy(dropouts)
 				for batch in new_dropouts:
 					batch["dropout"] = True
-					batch["text_cache"] = text_cache(True, text_model, accelerator, batch["tokens"], tokenizer, settings)
 				latent_cache.extend(new_dropouts)
 				print(f"Duplicated {len(new_dropouts)} caches for caption dropout.")
 				print(f"Total Cached Step Count: {len(latent_cache)}")
@@ -490,7 +491,8 @@ def main():
 	if settings["use_latent_cache"] or settings["create_latent_cache"]:
 		is_latent_cache = True
 		del image_model
-		del text_model
+		if settings["cache_text_encoder"]:
+			del text_model
 		del effnet
 		torch.cuda.empty_cache()
 
@@ -501,10 +503,22 @@ def main():
 				captions = batch["tokens"]
 				images = batch["images"] if not is_latent_cache else None
 				dropout = batch["dropout"]
-				batch_size = settings["batch_size"]
+				batch_size = len(batch["captions"])
 
 				with torch.no_grad():
-					text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, tokenizer, settings) if not is_latent_cache else batch["text_cache"]
+					text_embeddings = None
+					text_embeddings_pool = None
+					if is_latent_cache:
+						if dropout:
+							text_embeddings = te_dropout
+							text_embeddings_pool = pool_dropout
+						elif "text_cache" in batch and "pool_cache" in batch:
+							text_embeddings = batch["text_cache"]
+							text_embeddings_pool = batch["pool_cache"]
+						else:
+							text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, batch_size)
+					else:
+						text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, batch_size)
 					
 					
 				# Handle Image Encoding
@@ -519,14 +533,20 @@ def main():
 				# Get Latents
 				latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch["effnet_cache"]
 				latents = latents.to(dtype=main_dtype)
-				noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents, shift=1, loss_shift=1)
+				noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=torch.bfloat16), shift=1, loss_shift=1)
 				
 				# Forwards Pass
-				pred = None
-				loss = None
-				loss_adjusted = None
+				#pred = None
+				#loss = None
+				#loss_adjusted = None
 				with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-					pred = generator(noised, noise_cond, **{"clip_text": text_embeddings, "clip_text_pooled": text_embeddings_pool, "clip_img": image_embeddings})
+					pred = generator(noised, noise_cond, 
+						**{
+							"clip_text": text_embeddings.to(dtype=torch.bfloat16),
+							"clip_text_pooled": text_embeddings_pool.to(dtype=torch.bfloat16),
+							"clip_img": image_embeddings.to(dtype=torch.bfloat16)
+						}
+					)
 					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
 					loss_adjusted = (loss * loss_weight).mean() / settings["grad_accum_steps"]
 
@@ -534,7 +554,7 @@ def main():
 					gdf.loss_weight.update_buckets(logSNR, loss)
 
 				# Backwards Pass
-				accelerator.backward(loss_adjusted)
+				accelerator.backward(loss_adjusted.to(dtype=torch.float32))
 				grad_norm = nn.utils.clip_grad_norm_(generator.parameters(), 1.0)
 				optimizer.step()
 				scheduler.step()
@@ -559,13 +579,19 @@ def main():
 
 					epoch_bar.set_postfix(logs)
 					accelerator.log(logs, step=total_steps)
+
+					if (total_steps+1) % settings["save_every"] == 0:
+						accelerator.wait_for_everyone()
+						save_model(
+							accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
+							model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}")
 		
-		if not e % settings["save_every_n_epoch"]:
-			if accelerator.is_main_process:
-				accelerator.wait_for_everyone()
-				save_model(
-					accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
-					model_id = f"generator", settings=settings, accelerator=accelerator, step=f"e{e}")
+			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
+				if accelerator.is_main_process:
+					accelerator.wait_for_everyone()
+					save_model(
+						accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
+						model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e+1}")
 
 if __name__ == "__main__":
 	main()

@@ -2,6 +2,7 @@
 experiment_id: stage_c_1b_finetuning
 checkpoint_path: output
 output_path: output
+model_name: prototype_run_7
 
 # Stage C parameters:
 # Valid settings: 1B or 3.6B
@@ -21,22 +22,22 @@ dtype: bfloat16
 lr: 5.0e-6
 
 # The batch size.
-batch_size: 64
+batch_size: 16
 
 # The trained image size. Must be a multiple of 32.
 image_size: 1024
 
 # How many epochs should be trained in total?
-num_epochs: 5
+num_epochs: 20
 
 # How many epochs should pass before saving the model?
-save_every_n_epoch: 1
+save_every_n_epoch: 5
 
 # How many forwards steps can the model make before performing a backwards pass?
 grad_accum_steps: 1
 
 # How many training steps can pass before saving a copy of the model?
-save_every: 500
+save_every: 50000
 
 # How many steps should the learning rate warm up by?
 warmup_updates: 1
@@ -50,15 +51,10 @@ max_token_limit: 900
 # On Linux, this will enable Pytorch specific optimisations for Ampere or later GPUs. (RTX 30x0 or A100)
 # This option has no effect on Windows 10 and 11.
 #use_pytorch_cross_attention: true
-# Use this setting if you're on Windows - and follow the installation instructions in the readme.
-flash_attention: true
 
 # Which optimiser you prefer using.
 # Options: AdamW, AdamW8bit, Adafactor
 optimizer_type: AdamW8bit
-
-# This does something important for the 3.6B model, but is entirely useless for the 1B model.
-# adaptive_loss_weight: True
 
 # All three options must be present to use EMA weights
 # ema_start_iters: 5000
@@ -66,8 +62,15 @@ optimizer_type: AdamW8bit
 # ema_beta: 0.9
 
 # Where files are located - to repeat a folder, add it again.
-local_dataset_path: [F:\novelai]
-# local_dataset_path: [F:\novelai, F:\Waifusion, F:\Fluffvision\images]
+# local_dataset_path: [F:\novelai]
+local_dataset_path: [F:\novelai, F:\Waifusion, F:\Fluffvision\images]
+
+# Whether to reject images exceeding 1:x.yz ratio (Images will be tested as if they're portrait oriented - data will not be modified)
+reject_aspects: 3.75
+
+# The percentage of batches that must be duplicated for dropout purposes
+# 0.1 = 10% (Default), 1 = 100%
+dropout: 0.1
 
 # Will always ignore local_dataset_path, create_latent_cache and other dataloaders if set to true
 use_latent_cache: false
@@ -79,9 +82,7 @@ latent_cache_location: F:\latent_cache
 # Whether to create a latent cache from any of the dataloaders
 create_latent_cache: true
 
-# Whether to reject images exceeding 1:x.yz ratio (Images will be tested as if they're portrait oriented - data will not be modified)
-reject_aspects: 3.75
-
-# The percentage of batches that must be duplicated for dropout purposes
-# 0.1 = 10%, 1 = 100%
-dropout: 0.1
+# Whether to cache text encoder outputs (Increases latent cache size by many megabytes.)
+# If you know your current folder of latent caches is fully cached, also enable this to free more
+# memory. Otherwise leave this false.
+cache_text_encoder: false
