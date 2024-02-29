@@ -15,6 +15,7 @@ from core_util import create_folder_if_necessary, load_or_fail, load_optimizer, 
 from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseCond, DDPMSampler, P2LossWeight, AdaptiveLossWeight
 from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock
 from dataset_util import BucketWalker
+from xformers_util import convert_state_dict_mha_to_normal_attn
 from bucketeer import Bucketeer
 from warmup_scheduler import GradualWarmupScheduler
 from fractions import Fraction
@@ -57,7 +58,7 @@ def load_model(model, model_id=None, full_path=None, strict=True, settings=None)
 	if ckpt is not None:
 
 		if settings["flash_attention"]:
-			ckpt = {k.replace('attn.in_proj_','attn.Wqkv.'): v for k, v in ckpt.items()}
+			ckpt = convert_state_dict_mha_to_normal_attn(ckpt)
 
 		model.load_state_dict(ckpt, strict=strict)
 		del ckpt

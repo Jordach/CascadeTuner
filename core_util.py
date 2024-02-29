@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 import dataclasses
 from dataclasses import dataclass, _MISSING_TYPE
 from torch.utils.data import Dataset, DataLoader
+from xformers_util import convert_state_dict_normal_attn_to_mha
 import subprocess
 from tqdm import tqdm
 
@@ -131,7 +132,7 @@ def save_model(model, model_id=None, full_path=None, accelerator=None, settings=
 		checkpoint = model.state_dict()
 		        
 		if settings["flash_attention"]:
-			checkpoint = {k.replace('attn.Wqkv.','attn.in_proj_'): v for k, v in checkpoint.items()}
+			checkpoint = convert_state_dict_normal_attn_to_mha(checkpoint)
                                         
 		safe_save(checkpoint, full_path, step, accelerator=accelerator)
 		del checkpoint
