@@ -458,8 +458,7 @@ def main():
 		optimizer_kwargs["scale_parameter"] = True
 		optimizer_kwargs["relative_step"] = False
 		optimizer_kwargs["warmup_init"] = False
-		optimizer_kwargs["eps"] = 1e-30
-		optimizer_kwargs["eps2"] = 1e-3
+		optimizer_kwargs["eps"] = [1e-30, 1e-3]
 		optimizer_kwargs["clip_threshold"] = 1.0
 		optimizer_kwargs["decay_rate"] = -0.8
 		optimizer_kwargs["weight_decay"] = 0
