@@ -16,6 +16,7 @@ from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseC
 from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock
 from dataset_util import BucketWalker
 from xformers_util import convert_state_dict_mha_to_normal_attn
+from optim_util import step_adafactor
 from bucketeer import Bucketeer
 from warmup_scheduler import GradualWarmupScheduler
 from fractions import Fraction
@@ -126,8 +127,6 @@ def main():
 
 	# Basic Setup
 	settings["checkpoint_extension"] = "safetensors"
-	settings["wandb_project"] = None
-	settings["wandb_entity"] = None
 	settings["clip_image_model_name"] = "openai/clip-vit-large-patch14"
 	settings["clip_text_model_name"] = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
 	settings["num_epochs"] = 1
@@ -142,17 +141,13 @@ def main():
 	settings["flash_attention"] = False
 	settings["multi_aspect_ratio"] = [1/1, 1/2, 1/3, 2/3, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 9/16]
 	settings["model_name"] = "untitled_model"
-	
-	gdf_loss_weight = P2LossWeight()
-	if "adaptive_loss_weight" in settings:
-		if settings["adaptive_loss_weight"]:
-			gdf_loss_weight = AdaptiveLossWeight()
+	settings["adaptive_loss_weight"] = False
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
 		input_scaler=VPScaler(), target=EpsilonTarget(),
 		noise_cond=CosineTNoiseCond(),
-		loss_weight=gdf_loss_weight,
+		loss_weight=AdaptiveLossWeight() if settings["adaptive_loss_weight"] else P2LossWeight(),
 	)
 
 	effnet_preprocess = torchvision.transforms.Compose([
@@ -460,13 +455,23 @@ def main():
 			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
 		optimizer = bnb.optim.AdamW8bit
 	else: #AdaFactor
-		optimizer_kwargs["scale_parameter"] = False
+		optimizer_kwargs["scale_parameter"] = True
 		optimizer_kwargs["relative_step"] = False
 		optimizer_kwargs["warmup_init"] = False
+		optimizer_kwargs["eps"] = 1e-30
+		optimizer_kwargs["eps2"] = 1e-3
+		optimizer_kwargs["clip_threshold"] = 1.0
+		optimizer_kwargs["decay_rate"] = -0.8
+		optimizer_kwargs["weight_decay"] = 0
+		optimizer_kwargs["beta1"] = None
+		
 		optimizer = transformers.optimization.Adafactor
 
-	optimizer = optimizer(generator.parameters(), lr=settings["lr"], **optimizer_kwargs)
-	optimizer = load_optimizer(optimizer, 'generator_optim', settings=settings)
+	optimizer = optimizer(generator.parameters(), lr=settings["lr"] if not optimizer_kwargs["relative_step"] else None, **optimizer_kwargs)
+
+	# Special hook for stochastic rounding for adafactor
+	if optimizer_type == "adafactorstoch":
+		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
 
 	# Load scheduler
 	scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=settings["warmup_updates"])
@@ -479,9 +484,7 @@ def main():
 
 	# Training loop
 	steps_bar = tqdm(dataloader, desc="Steps to Epoch")
-	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epoch")
-	step_count = 1
-
+	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs")
 	generator.train()
 	total_steps = 0
 
