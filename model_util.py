@@ -704,29 +704,68 @@ class StageC(nn.Module):
     def forward(self, x, r, clip_text, clip_text_pooled, clip_img, cnet=None, **kwargs):
         # Process the conditioning embeddings
 
-        # One of these gradient checkpoints returns a None gradient; but other wise function fine
-        # but it's being silenced here by force due to checkpointing working, but all tensors are
-        # not using a grad - this certainly can't cause any problems later on, right?
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            r_embed = torch.utils.checkpoint.checkpoint(self.gen_r_embedding, r, use_reentrant=False)
-            for c in self.t_conds:
-                t_cond = kwargs.get(c, torch.zeros_like(r))
-                r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
-            
-            clip = torch.utils.checkpoint.checkpoint(self.gen_c_embeddings, clip_text, clip_text_pooled, clip_img, use_reentrant=True)
+        r_embed = self.gen_r_embedding(r)
+        for c in self.t_conds:
+            t_cond = kwargs.get(c, torch.zeros_like(r))
+            r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
+        
+        clip = self.gen_c_embeddings(clip_text, clip_text_pooled, clip_img)
 
-            # Model Blocks
-            x = torch.utils.checkpoint.checkpoint(self.embedding, x, use_reentrant=False)
-            if cnet is not None:
-                cnet = torch.utils.checkpoint.checkpoint(ControlNetDeliverer, cnet, use_reentrant=True)
+        # Model Blocks
+        x = self.embedding(x)
+        if cnet is not None:
+            cnet = ControlNetDeliverer(cnet)
 
-            level_outputs = torch.utils.checkpoint.checkpoint(self._down_encode, x, r_embed, clip, cnet, use_reentrant=False)
-            x = torch.utils.checkpoint.checkpoint(self._up_decode, level_outputs, r_embed, clip, cnet, use_reentrant=True)
-            return self.clf(x)
+        level_outputs = self._down_encode(x, r_embed, clip, cnet)
+        x = self._up_decode(level_outputs, r_embed, clip, cnet)
+        return self.clf(x)
 
     def update_weights_ema(self, src_model, beta=0.999):
         for self_params, src_params in zip(self.parameters(), src_model.parameters()):
             self_params.data = self_params.data * beta + src_params.data.clone().to(self_params.device) * (1 - beta)
         for self_buffers, src_buffers in zip(self.buffers(), src_model.buffers()):
             self_buffers.data = self_buffers.data * beta + src_buffers.data.clone().to(self_buffers.device) * (1 - beta)
+
+
+from torch.utils.checkpoint import checkpoint
+from typing import Callable
+
+def create_checkpointed_forward(orig_module: nn.Module, device: torch.device) -> Callable:
+    orig_forward = orig_module.forward
+
+    def custom_forward(
+            # dummy tensor that requires grad is needed for checkpointing to work when training a LoRA
+            dummy: torch.Tensor = None,
+            *args,
+            **kwargs,
+    ):
+        return orig_forward(
+            *args,
+            **kwargs,
+        )
+
+    def forward(
+            *args,
+            **kwargs
+    ):
+        dummy = torch.zeros((1,), device=device)
+        dummy.requires_grad_(True)
+
+        return checkpoint(
+            custom_forward,
+            dummy,
+            *args,
+            **kwargs,
+            use_reentrant=False
+        )
+
+    return forward
+
+def enable_checkpointing_for_stable_cascade_blocks(orig_module: nn.Module, device: torch.device):
+    for name, child_module in orig_module.named_modules():
+        if isinstance(child_module, ResBlock):
+            child_module.forward = create_checkpointed_forward(child_module, device)
+        if isinstance(child_module, AttnBlock):
+            child_module.forward = create_checkpointed_forward(child_module, device)
+        if isinstance(child_module, TimestepBlock):
+            child_module.forward = create_checkpointed_forward(child_module, device)
