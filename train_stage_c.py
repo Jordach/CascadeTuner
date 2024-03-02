@@ -13,7 +13,7 @@ import copy
 import random
 from core_util import create_folder_if_necessary, load_or_fail, load_optimizer, save_model, save_optimizer, update_weights_ema
 from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseCond, DDPMSampler, P2LossWeight, AdaptiveLossWeight
-from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock
+from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock, enable_checkpointing_for_stable_cascade_blocks
 from dataset_util import BucketWalker
 from xformers_util import convert_state_dict_mha_to_normal_attn
 from optim_util import step_adafactor
@@ -441,6 +441,7 @@ def main():
 		# return
 	else:
 		generator = load_model(generator, model_id='generator', settings=settings)
+	enable_checkpointing_for_stable_cascade_blocks(generator,accelerator.device)
 	generator = generator.to(accelerator.device, dtype=main_dtype)
 
 	if generator_ema is not None:
