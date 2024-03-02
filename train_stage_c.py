@@ -66,7 +66,7 @@ def load_model(model, model_id=None, full_path=None, strict=True, settings=None)
 	return model
 
 
-def text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, batch_size):
+def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, settings, batch_size):
 	text_embeddings = None
 	text_embeddings_pool = None
 
@@ -74,6 +74,7 @@ def text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, 
 	max_length = tokenizer.model_max_length
 	max_standard_tokens = max_length - 2
 	token_chunks_limit = math.ceil(settings["max_token_limit"] / max_standard_tokens)
+
 	if token_chunks_limit < 1:
 		token_chunks_limit = 1
 
@@ -82,39 +83,32 @@ def text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, 
 		clip_tokens_unpooled = tokenizer(captions_unpooled, truncation=True, padding="max_length",
 										max_length=tokenizer.model_max_length,
 										return_tensors="pt").to(accelerator.device)
+
 		text_encoder_output = text_model(**clip_tokens_unpooled, output_hidden_states=True)
 		text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
 		text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
 	else:
-		true_len = max(len(x) for x in captions)
-		n_chunks = np.ceil(true_len / max_standard_tokens).astype(int)
-		max_len = n_chunks.item() * max_standard_tokens
-
-		token_copy = captions.detach().clone()
-		for i, x in enumerate(token_copy):
-			if len(x) < max_len:
-				token_copy[i] = [*x, *np.full((max_len - len(x)), tokenizer.eos_token_id)]
-			del i, x
-		
-		chunks = [token_copy[:, i:i + max_standard_tokens] for i in range(0, max_len, max_standard_tokens)]
-		n_processed = 0
-		for chunk in chunks:
+		for chunk_id in range(len(captions)):
 			# Hard limit the tokens to fit in memory for the rare event that latent caches that somehow exceed the limit.
-			if n_processed > (token_chunks_limit):
-				del chunk
+			if chunk_id > (token_chunks_limit):
 				break
 
-			chunk = chunk.to(accelerator.device)
-			chunk = torch.cat((torch.full((chunk.shape[0], 1), tokenizer.bos_token_id).to(accelerator.device), chunk, torch.full((chunk.shape[0], 1), tokenizer.eos_token_id).to(accelerator.device)), 1)
-			text_encoder_output = text_model(chunk, output_hidden_states=True)
+			token_chunk = captions[chunk_id].to(accelerator.device)
+			token_chunk = torch.cat((torch.full((token_chunk.shape[0], 1), tokenizer.bos_token_id).to(accelerator.device), token_chunk, torch.full((token_chunk.shape[0], 1), tokenizer.eos_token_id).to(accelerator.device)), 1)
+			attn_chunk = att_mask[chunk_id].to(accelerator.device)
+			# First 75 tokens we allow BOS to not be masked - otherwise we mask them out
+			if chunk_id == 0:
+				attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
+			else:
+				attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
+			text_encoder_output = text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
+
 			if text_embeddings is None:
 				text_embeddings = text_encoder_output["hidden_states"][settings["clip_skip"]]
 				text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
 			else:
 				text_embeddings = torch.cat((text_embeddings, text_encoder_output["hidden_states"][settings["clip_skip"]]), dim=-2)
 				text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2)
-			n_processed += 1
-		del chunks, token_copy
 
 	return text_embeddings, text_embeddings_pool
 
@@ -287,14 +281,24 @@ def main():
 			len_input = (tokenizer.model_max_length * num_chunks) - (num_chunks * 2)
 		
 		# Tokenize!
-		batch_tokens = tokenizer.pad(
+		tokens = tokenizer.pad(
 			{"input_ids": raw_tokens},
 			padding="max_length",
 			max_length=len_input,
 			return_tensors="pt"
-		).input_ids
+		).to(accelerator.device)
+		batch_tokens = tokens["input_ids"].to(accelerator.device)
+		batch_att_mask = tokens["attention_mask"].to(accelerator.device)
 
-		return {"images": images, "tokens": batch_tokens, "caption": caption, "aspects": aspects, "dropout": False}
+		max_standard_tokens = tokenizer.model_max_length - 2
+		true_len = max(len(x) for x in batch_tokens)
+		n_chunks = np.ceil(true_len / max_standard_tokens).astype(int)
+		max_len = n_chunks.item() * max_standard_tokens
+
+		cropped_tokens = [batch_tokens[:, i:i + max_standard_tokens] for i in range(0, max_len, max_standard_tokens)]
+		cropped_attn = [batch_att_mask[:, i:i + max_standard_tokens] for i in range(0, max_len, max_standard_tokens)]
+		
+		return {"images": images, "tokens": cropped_tokens, "att_mask": cropped_attn, "caption": caption, "aspects": aspects, "dropout": False}
 
 	pre_dataloader = DataLoader(
 		pre_dataset, batch_size=settings["batch_size"], shuffle=False, collate_fn=pre_collate, pin_memory=False,
@@ -339,8 +343,9 @@ def main():
 		images = images.to(memory_format=torch.contiguous_format)
 		images = images.to(accelerator.device)
 		tokens = batch[0]["tokens"]
+		att_mask = batch[0]["att_mask"]
 		captions = batch[0]["caption"]
-		return {"images": images, "tokens": tokens, "captions": captions, "dropout": False}
+		return {"images": images, "tokens": tokens, "att_mask": att_mask, "captions": captions, "dropout": False}
 
 	# Shuffle the dataset and initialise the dataloader if we're not latent caching
 	set_seed(settings["seed"])
@@ -351,7 +356,7 @@ def main():
 	)
 
 	# Optional Latent Caching Step:
-	te_dropout, pool_dropout = text_cache(True, text_model, accelerator, [], tokenizer, settings, settings["batch_size"])
+	te_dropout, pool_dropout = text_cache(True, text_model, accelerator, [], [], tokenizer, settings, settings["batch_size"])
 	def latent_collate(batch):
 		cache = torch.load(batch[0]["path"])
 		if "dropout" in batch:
@@ -367,7 +372,7 @@ def main():
 			batch["effnet_cache"] = effnet(effnet_preprocess(batch["images"].to(dtype=main_dtype)))
 			batch["clip_cache"] = image_model(clip_preprocess(batch["images"])).image_embeds
 			if settings["cache_text_encoder"]:
-				te_cache, pool_cache = text_cache(False, text_model, accelerator, batch["tokens"], tokenizer, settings, settings["batch_size"])
+				te_cache, pool_cache = text_cache(False, text_model, accelerator, batch["tokens"], batch["att_mask"], tokenizer, settings, settings["batch_size"])
 				batch["text_cache"] = te_cache
 				batch["pool_cache"] = pool_cache
 			del batch["images"]
@@ -455,7 +460,7 @@ def main():
 			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
 		optimizer = bnb.optim.AdamW8bit
 	else: #AdaFactor
-		optimizer_kwargs["scale_parameter"] = True
+		optimizer_kwargs["scale_parameter"] = False
 		optimizer_kwargs["relative_step"] = False
 		optimizer_kwargs["warmup_init"] = False
 		optimizer_kwargs["eps"] = [1e-30, 1e-3]
@@ -504,10 +509,11 @@ def main():
 			current_step = 0
 			for batch in steps_bar:
 				captions = batch["tokens"]
+				attn_mask = batch["att_mask"]
 				images = batch["images"] if not is_latent_cache else None
 				dropout = batch["dropout"]
 				batch_size = len(batch["captions"])
-
+				
 				with torch.no_grad():
 					text_embeddings = None
 					text_embeddings_pool = None
@@ -519,24 +525,23 @@ def main():
 							text_embeddings = batch["text_cache"]
 							text_embeddings_pool = batch["pool_cache"]
 						else:
-							text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, batch_size)
+							text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
 					else:
-						text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, tokenizer, settings, batch_size)
+						text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
 					
 					
-				# Handle Image Encoding
-				image_embeddings = torch.zeros(batch_size, 768, device=accelerator.device, dtype=main_dtype)
-				with torch.no_grad():
+					# Handle Image Encoding
+					image_embeddings = torch.zeros(batch_size, 768, device=accelerator.device, dtype=main_dtype)
 					if not dropout:
 						rand_id = np.random.rand(batch_size) > 0.9
 						if any(rand_id):
 							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id])).image_embeds if not is_latent_cache else batch["clip_cache"][rand_id]
 					image_embeddings = image_embeddings.unsqueeze(1)
 
-				# Get Latents
-				latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch["effnet_cache"]
-				latents = latents.to(dtype=main_dtype)
-				noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=torch.bfloat16), shift=1, loss_shift=1)
+					# Get Latents
+					latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch["effnet_cache"]
+					latents = latents.to(dtype=main_dtype)
+					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=torch.bfloat16), shift=1, loss_shift=1)
 				
 				# Forwards Pass
 				#pred = None
