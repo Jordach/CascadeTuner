@@ -514,6 +514,7 @@ def main():
 	with accelerator.accumulate(generator):
 		for e in epoch_bar:
 			current_step = 0
+			steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
 			for batch in dataloader:
 				captions = batch["tokens"]
 				attn_mask = batch["att_mask"]
@@ -521,7 +522,6 @@ def main():
 				dropout = batch["dropout"]
 				batch_size = len(batch["captions"])
 				
-				steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
 				with torch.no_grad():
 					text_embeddings = None
 					text_embeddings_pool = None
