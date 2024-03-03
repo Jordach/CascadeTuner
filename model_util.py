@@ -11,8 +11,50 @@ from core_util import load_or_fail
 import warnings
 
 from xformers_util import FlashAttention2D
+from torch.utils.checkpoint import checkpoint
+from typing import Callable
 
 # Common
+def create_checkpointed_forward(orig_module: nn.Module, device: torch.device) -> Callable:
+    orig_forward = orig_module.forward
+
+    def custom_forward(
+            # dummy tensor that requires grad is needed for checkpointing to work when training a LoRA
+            dummy: torch.Tensor = None,
+            *args,
+            **kwargs,
+    ):
+        return orig_forward(
+            *args,
+            **kwargs,
+        )
+
+    def forward(
+            *args,
+            **kwargs
+    ):
+        dummy = torch.zeros((1,), device=device)
+        dummy.requires_grad_(True)
+
+        return checkpoint(
+            custom_forward,
+            dummy,
+            *args,
+            **kwargs,
+            use_reentrant=True
+        )
+
+    return forward
+
+def enable_checkpointing_for_stable_cascade_blocks(orig_module: nn.Module, device: torch.device):
+    for name, child_module in orig_module.named_modules():
+        if isinstance(child_module, ResBlock):
+            child_module.forward = create_checkpointed_forward(child_module, device)
+        if isinstance(child_module, AttnBlock):
+            child_module.forward = create_checkpointed_forward(child_module, device)
+        if isinstance(child_module, TimestepBlock):
+            child_module.forward = create_checkpointed_forward(child_module, device)
+
 class Linear(torch.nn.Linear):
     def reset_parameters(self):
         return None
@@ -643,22 +685,16 @@ class StageC(nn.Module):
             x = downscaler(x)
             for i in range(len(repmap) + 1):
                 for block in down_block:
-                    if isinstance(block, ResBlock) or (
-                            hasattr(block, '_fsdp_wrapped_module') and isinstance(block._fsdp_wrapped_module,
-                                                                                  ResBlock)):
+                    if isinstance(block, ResBlock):
                         if cnet is not None:
                             next_cnet = cnet()
                             if next_cnet is not None:
                                 x = x + nn.functional.interpolate(next_cnet, size=x.shape[-2:], mode='bilinear',
                                                                   align_corners=True)
                         x = block(x)
-                    elif isinstance(block, AttnBlock) or (
-                            hasattr(block, '_fsdp_wrapped_module') and isinstance(block._fsdp_wrapped_module,
-                                                                                  AttnBlock)):
+                    elif isinstance(block, AttnBlock):
                         x = block(x, clip)
-                    elif isinstance(block, TimestepBlock) or (
-                            hasattr(block, '_fsdp_wrapped_module') and isinstance(block._fsdp_wrapped_module,
-                                                                                  TimestepBlock)):
+                    elif isinstance(block, TimestepBlock):
                         x = block(x, r_embed)
                     else:
                         x = block(x)
@@ -673,9 +709,7 @@ class StageC(nn.Module):
         for i, (up_block, upscaler, repmap) in enumerate(block_group):
             for j in range(len(repmap) + 1):
                 for k, block in enumerate(up_block):
-                    if isinstance(block, ResBlock) or (
-                            hasattr(block, '_fsdp_wrapped_module') and isinstance(block._fsdp_wrapped_module,
-                                                                                  ResBlock)):
+                    if isinstance(block, ResBlock):
                         skip = level_outputs[i] if k == 0 and i > 0 else None
                         if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
                             x = torch.nn.functional.interpolate(x.float(), skip.shape[-2:], mode='bilinear',
@@ -686,13 +720,9 @@ class StageC(nn.Module):
                                 x = x + nn.functional.interpolate(next_cnet, size=x.shape[-2:], mode='bilinear',
                                                                   align_corners=True)
                         x = block(x, skip)
-                    elif isinstance(block, AttnBlock) or (
-                            hasattr(block, '_fsdp_wrapped_module') and isinstance(block._fsdp_wrapped_module,
-                                                                                  AttnBlock)):
+                    elif isinstance(block, AttnBlock):
                         x = block(x, clip)
-                    elif isinstance(block, TimestepBlock) or (
-                            hasattr(block, '_fsdp_wrapped_module') and isinstance(block._fsdp_wrapped_module,
-                                                                                  TimestepBlock)):
+                    elif isinstance(block, TimestepBlock):
                         x = block(x, r_embed)
                     else:
                         x = block(x)
@@ -703,69 +733,39 @@ class StageC(nn.Module):
 
     def forward(self, x, r, clip_text, clip_text_pooled, clip_img, cnet=None, **kwargs):
         # Process the conditioning embeddings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            r_embed = self.gen_r_embedding(r)
+            for c in self.t_conds:
+                t_cond = kwargs.get(c, torch.zeros_like(r))
+                r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
+            
+            # clip = self.gen_c_embeddings(clip_text, clip_text_pooled, clip_img)
+            clip = checkpoint(self.gen_c_embeddings, clip_text, clip_text_pooled, clip_img, use_reentrant=True)
+            # print()
+            # print("r", r_embed.requires_grad)
+            # print("clip", clip.requires_grad)
 
-        r_embed = self.gen_r_embedding(r)
-        for c in self.t_conds:
-            t_cond = kwargs.get(c, torch.zeros_like(r))
-            r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
-        
-        clip = self.gen_c_embeddings(clip_text, clip_text_pooled, clip_img)
+            # Model Blocks
+            # x = self.embedding(x)
+            x = checkpoint(self.embedding, x, use_reentrant=False)
+            # print("x 1", x.requires_grad, x.grad)
+            if cnet is not None:
+                cnet = ControlNetDeliverer(cnet)
 
-        # Model Blocks
-        x = self.embedding(x)
-        if cnet is not None:
-            cnet = ControlNetDeliverer(cnet)
-
-        level_outputs = self._down_encode(x, r_embed, clip, cnet)
-        x = self._up_decode(level_outputs, r_embed, clip, cnet)
-        return self.clf(x)
+            # level_outputs = self._down_encode(x, r_embed, clip, cnet)
+            level_outputs = checkpoint(self._down_encode, x, r_embed, clip, cnet, use_reentrant=False)
+            
+            # x = self._up_decode(level_outputs, r_embed, clip, cnet)
+            x = checkpoint(self._up_decode, level_outputs, r_embed, clip, cnet, use_reentrant=True)
+            # print("x 2", x.requires_grad, x.grad)
+            
+            clf = self.clf(x)
+            clf.retain_grad()
+            return clf
 
     def update_weights_ema(self, src_model, beta=0.999):
         for self_params, src_params in zip(self.parameters(), src_model.parameters()):
             self_params.data = self_params.data * beta + src_params.data.clone().to(self_params.device) * (1 - beta)
         for self_buffers, src_buffers in zip(self.buffers(), src_model.buffers()):
             self_buffers.data = self_buffers.data * beta + src_buffers.data.clone().to(self_buffers.device) * (1 - beta)
-
-
-from torch.utils.checkpoint import checkpoint
-from typing import Callable
-
-def create_checkpointed_forward(orig_module: nn.Module, device: torch.device) -> Callable:
-    orig_forward = orig_module.forward
-
-    def custom_forward(
-            # dummy tensor that requires grad is needed for checkpointing to work when training a LoRA
-            dummy: torch.Tensor = None,
-            *args,
-            **kwargs,
-    ):
-        return orig_forward(
-            *args,
-            **kwargs,
-        )
-
-    def forward(
-            *args,
-            **kwargs
-    ):
-        dummy = torch.zeros((1,), device=device)
-        dummy.requires_grad_(True)
-
-        return checkpoint(
-            custom_forward,
-            dummy,
-            *args,
-            **kwargs,
-            use_reentrant=False
-        )
-
-    return forward
-
-def enable_checkpointing_for_stable_cascade_blocks(orig_module: nn.Module, device: torch.device):
-    for name, child_module in orig_module.named_modules():
-        if isinstance(child_module, ResBlock):
-            child_module.forward = create_checkpointed_forward(child_module, device)
-        if isinstance(child_module, AttnBlock):
-            child_module.forward = create_checkpointed_forward(child_module, device)
-        if isinstance(child_module, TimestepBlock):
-            child_module.forward = create_checkpointed_forward(child_module, device)

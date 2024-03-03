@@ -62,6 +62,7 @@ def load_model(model, model_id=None, full_path=None, strict=True, settings=None)
 			ckpt = convert_state_dict_mha_to_normal_attn(ckpt)
 
 		model.load_state_dict(ckpt, strict=strict)
+		print("Loaded requested model from disk.")
 		del ckpt
 	return model
 
@@ -136,6 +137,7 @@ def main():
 	settings["multi_aspect_ratio"] = [1/1, 1/2, 1/3, 2/3, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 9/16]
 	settings["model_name"] = "untitled_model"
 	settings["adaptive_loss_weight"] = False
+	settings["loss_floor"] = 0
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
@@ -369,15 +371,18 @@ def main():
 		create_folder_if_necessary(settings["latent_cache_location"])
 		step = 0
 		for batch in tqdm(dataloader, desc="Latent Caching"):
-			batch["effnet_cache"] = effnet(effnet_preprocess(batch["images"].to(dtype=main_dtype)))
-			batch["clip_cache"] = image_model(clip_preprocess(batch["images"])).image_embeds
-			if settings["cache_text_encoder"]:
-				te_cache, pool_cache = text_cache(False, text_model, accelerator, batch["tokens"], batch["att_mask"], tokenizer, settings, settings["batch_size"])
-				batch["text_cache"] = te_cache
-				batch["pool_cache"] = pool_cache
+			with torch.no_grad():
+				batch["effnet_cache"] = effnet(effnet_preprocess(batch["images"].to(dtype=main_dtype)))
+				batch["clip_cache"] = image_model(clip_preprocess(batch["images"])).image_embeds
+				if settings["cache_text_encoder"]:
+					te_cache, pool_cache = text_cache(False, text_model, accelerator, batch["tokens"], batch["att_mask"], tokenizer, settings, settings["batch_size"])
+					batch["text_cache"] = te_cache
+					batch["pool_cache"] = pool_cache
 			del batch["images"]
-			torch.save(batch, os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt"))
-			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], f"latent_cache_{step}.pt")})
+			
+			file_name = f"latent_cache_{step}.pt" if not settings["cache_text_encoder"] else f"latent_cache_te_{step}.pt"
+			torch.save(batch, os.path.join(settings["latent_cache_location"], file_name))
+			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], file_name)})
 			step += 1
 	
 	elif settings["use_latent_cache"]:
@@ -414,8 +419,7 @@ def main():
 	def loading_context():
 		yield None
 
-	# Load in Stage C/B	
-	print("Loading Stage C Model.")
+	# Load in Stage C/B
 	with loading_context():
 		if "model_version" not in settings:
 			raise ValueError('model_version key is missing from supplied YAML.')
@@ -423,10 +427,12 @@ def main():
 		flash_attention = settings["flash_attention"]
 		generator_ema = None
 		if settings["model_version"] == "3.6B":
+			print("Creating and loading an instance of Stage C 3.6B.")
 			generator = StageC(flash_attention=flash_attention)
 			if "ema_start_iters" in settings:
 				generator_ema = StageC(flash_attention=flash_attention)
 		elif settings["model_version"] == "1B":
+			print("Creating and loading an instance of Stage C 1B.")
 			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
 			if "ema_start_iters" in settings:
 				generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
@@ -441,7 +447,7 @@ def main():
 		# return
 	else:
 		generator = load_model(generator, model_id='generator', settings=settings)
-	enable_checkpointing_for_stable_cascade_blocks(generator,accelerator.device)
+	# enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
 	generator = generator.to(accelerator.device, dtype=main_dtype)
 
 	if generator_ema is not None:
@@ -472,7 +478,7 @@ def main():
 		
 		optimizer = transformers.optimization.Adafactor
 
-	optimizer = optimizer(generator.parameters(), lr=settings["lr"] if not optimizer_kwargs["relative_step"] else None, **optimizer_kwargs)
+	optimizer = optimizer(generator.parameters(), lr=settings["lr"], **optimizer_kwargs)
 
 	# Special hook for stochastic rounding for adafactor
 	if optimizer_type == "adafactorstoch":
@@ -488,7 +494,7 @@ def main():
 		accelerator.init_trackers("training")
 
 	# Training loop
-	steps_bar = tqdm(dataloader, desc="Steps to Epoch")
+	steps_bar = tqdm(range(len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset)), desc="Steps to Epoch")
 	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs")
 	generator.train()
 	total_steps = 0
@@ -508,13 +514,14 @@ def main():
 	with accelerator.accumulate(generator):
 		for e in epoch_bar:
 			current_step = 0
-			for batch in steps_bar:
+			for batch in dataloader:
 				captions = batch["tokens"]
 				attn_mask = batch["att_mask"]
 				images = batch["images"] if not is_latent_cache else None
 				dropout = batch["dropout"]
 				batch_size = len(batch["captions"])
 				
+				steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
 				with torch.no_grad():
 					text_embeddings = None
 					text_embeddings_pool = None
@@ -536,28 +543,24 @@ def main():
 					if not dropout:
 						rand_id = np.random.rand(batch_size) > 0.9
 						if any(rand_id):
-							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id])).image_embeds if not is_latent_cache else batch["clip_cache"][rand_id]
+							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id].to(dtype=main_dtype))).image_embeds.to(dtype=main_dtype) if not is_latent_cache else batch["clip_cache"][rand_id].to(dtype=main_dtype)
 					image_embeddings = image_embeddings.unsqueeze(1)
 
 					# Get Latents
 					latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch["effnet_cache"]
-					latents = latents.to(dtype=main_dtype)
-					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=torch.bfloat16), shift=1, loss_shift=1)
+					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=main_dtype), shift=1, loss_shift=1)
 				
 				# Forwards Pass
-				#pred = None
-				#loss = None
-				#loss_adjusted = None
-				with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+				with accelerator.autocast():
 					pred = generator(noised, noise_cond, 
 						**{
-							"clip_text": text_embeddings.to(dtype=torch.bfloat16),
-							"clip_text_pooled": text_embeddings_pool.to(dtype=torch.bfloat16),
-							"clip_img": image_embeddings.to(dtype=torch.bfloat16)
+							"clip_text": text_embeddings.to(dtype=main_dtype),
+							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
+							"clip_img": image_embeddings.to(dtype=main_dtype)
 						}
 					)
 					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
-					loss_adjusted = (loss * loss_weight).mean() / settings["grad_accum_steps"]
+					loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
 
 				if isinstance(gdf.loss_weight, AdaptiveLossWeight):
 					gdf.loss_weight.update_buckets(logSNR, loss)
@@ -569,6 +572,7 @@ def main():
 				scheduler.step()
 				optimizer.zero_grad()
 
+				steps_bar.update(1)
 				current_step += 1
 				total_steps += 1
 
@@ -582,7 +586,7 @@ def main():
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
-						"grad_norm": grad_norm.item(),
+						"grad_norm": grad_norm.mean().item(),
 						"lr": scheduler.get_last_lr()[0]
 					}
 
@@ -594,7 +598,7 @@ def main():
 						save_model(
 							accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
 							model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}")
-		
+
 			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
 				if accelerator.is_main_process:
 					accelerator.wait_for_everyone()
