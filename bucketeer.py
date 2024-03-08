@@ -19,7 +19,8 @@ class Bucketeer():
 		crop_mode='center',
 		p_random_ratio=0.0,
 		interpolate_nearest=False,
-		transforms=None
+		transforms=None,
+		settings=None
 	):
 		assert crop_mode in ['center', 'random', 'smart']
 		self.crop_mode = crop_mode
@@ -34,6 +35,8 @@ class Bucketeer():
 		self.interpolate_nearest = interpolate_nearest
 		self.transforms = transforms
 		self.density = density
+		self.settings = settings
+		self.factor = factor
 
 	def get_closest_size(self, x, y):
 		if self.p_random_ratio > 0 and np.random.rand() < self.p_random_ratio:
@@ -59,28 +62,47 @@ class Bucketeer():
 			path = item
 			image = Image.open(path).convert("RGB")
 			w, h = image.size
+			img_se = min(w, h)
+			img_le = max(w, h)
 
-			# Get crop for the bucket's ratio
+			# Get crop and resizing info for the bucket's ratio
+			resize_dims = self.get_closest_size(w, h)
+			resize_se = min(resize_dims[0], resize_dims[1])
+			resize_le = max(resize_dims[0], resize_dims[1])
+
+			_crop_se = (math.sqrt(self.density)* 2)
+			_crop_le = (math.sqrt(self.density)* 2) * ratio
+			crop_dims = self.get_closest_size(_crop_se, _crop_le)
+			crop_se = min(crop_dims[0], crop_dims[1])
+			crop_le = max(crop_dims[0], crop_dims[1])
+
+			# Get resizing factor
+			scale_factor = (resize_se + 32) / img_se
+			new_le = int(img_le * scale_factor)
+
+			# A note on TorchVision CenterCrop and PIL resize:
+			# They're H,W and not W,H oriented
 			actual_ratio = w/h
-			if actual_ratio <= 1:
-				cw = (math.sqrt(self.density)* 2) * ratio
-				ch = (math.sqrt(self.density)* 2)
+			if actual_ratio >= 1:
+				# size = [resize_se+32, new_le]
+				size = [resize_se, resize_le]
+				crop_size = [crop_se, crop_le]
 			else:
-				cw = (math.sqrt(self.density)* 2)
-				ch = (math.sqrt(self.density)* 2) * ratio 
-			size = self.get_closest_size(w, h)
-			crop_size = self.get_closest_size(int(cw), int(ch))
-			#resize_size = self.get_resize_size(img.shape[-2:], size)
-
+				# size = [new_le, resize_se+32]
+				size = [resize_le, resize_se]
+				crop_size = [crop_le, crop_se]
+				
+			# resize_size = self.get_resize_size(img.shape[-2:], size)
 			if self.interpolate_nearest:
-				image = image.resize((size[0], size[1]), Image.Resampling.NEAREST)
-				#img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.NEAREST)
+				image = image.resize((size[1], size[0]), Image.Resampling.NEAREST)
+				# img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.NEAREST)
 			else:
-				image = image.resize((size[0], size[1]), Image.Resampling.LANCZOS)
-				#img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True)
+				image = image.resize((size[1], size[0]), Image.Resampling.LANCZOS)
+				# img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True)
+			# nw, nh = image.size
 			img = self.transforms(image)
 			del image
-				
+			
 			if self.crop_mode == 'center':
 				img = torchvision.transforms.functional.center_crop(img, crop_size)
 			elif self.crop_mode == 'random':
@@ -91,4 +113,9 @@ class Bucketeer():
 			else:
 				img = torchvision.transforms.functional.center_crop(img, crop_size)
 			
+			# crop_img = img.shape[-2:]
+
+			# file_path = f"{self.settings['checkpoint_path']}/{self.settings['experiment_id']}/dataset_debug.csv"
+			# with open(file_path, "a") as f:
+			# 	f.write(f"{actual_ratio:.2f},{w}x{h},{nw}x{nh},{crop_size[1]}x{crop_size[0]},{crop_img[1]}x{crop_img[0]}\n")
 			return img

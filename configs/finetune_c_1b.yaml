@@ -2,16 +2,16 @@
 experiment_id: stage_c_1b_finetuning
 checkpoint_path: output
 output_path: output
-model_name: prototype_run_9
+model_name: prototype_run_14
 
 # Stage C parameters:
 # Valid settings: 1B or 3.6B
-model_version: 3.6B
+model_version: 1B
 
 # The checkpoints that are used for training.
 effnet_checkpoint_path: models/effnet_encoder.safetensors
 # Note: stage_c_lite_bf16 is the 1B model, while stage_c_bf16 is the 3.6B model.
-generator_checkpoint_path: models/stage_c_bf16.safetensors
+generator_checkpoint_path: models/stage_c_lite_bf16.safetensors
 
 # The precision of the model.
 # Preferred: bfloat16
@@ -27,7 +27,7 @@ lr: 5.0e-6
 loss_floor: 0
 
 # The batch size.
-batch_size: 8
+batch_size: 4
 
 # The trained image size. Must be a multiple of 32.
 # 1B was trained at 768, 3.6B was trained at 1024

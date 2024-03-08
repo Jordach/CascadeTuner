@@ -41,7 +41,7 @@ def create_checkpointed_forward(orig_module: nn.Module, device: torch.device) ->
             dummy,
             *args,
             **kwargs,
-            use_reentrant=True
+            use_reentrant=False
         )
 
     return forward
@@ -304,7 +304,6 @@ class CannyFilter(BaseFilter):
             edges = nn.functional.interpolate(edges, size=orig_size, mode='bilinear')
         return edges
 
-
 class QRFilter(BaseFilter):
     def __init__(self, device, resize=224, blobify=True, dilation_kernels=[3, 5, 7], blur_kernels=[15]):
         super().__init__(device)
@@ -345,7 +344,6 @@ class QRFilter(BaseFilter):
             mask = nn.functional.interpolate(mask, size=orig_size, mode='bilinear')
         return mask.cpu()
 
-
 class PidiFilter(BaseFilter):
     def __init__(self, device, resize=224, dilation_kernels=[0, 3, 5, 7, 9], binarize=True):
         super().__init__(device)
@@ -377,7 +375,6 @@ class PidiFilter(BaseFilter):
             x = nn.functional.interpolate(x, size=orig_size, mode='bilinear')
         return x.cpu()
 
-
 class SRFilter(BaseFilter):
     def __init__(self, device, scale_factor=1 / 4):
         super().__init__(device)
@@ -389,7 +386,6 @@ class SRFilter(BaseFilter):
     def __call__(self, x):
         x = torch.nn.functional.interpolate(x.clone(), scale_factor=self.scale_factor, mode="nearest")
         return torch.nn.functional.interpolate(x, scale_factor=1 / self.scale_factor, mode="nearest")
-
 
 class SREffnetFilter(BaseFilter):
     def __init__(self, device, scale_factor=1/2):
@@ -417,7 +413,6 @@ class SREffnetFilter(BaseFilter):
         effnet_embedding = torch.nn.functional.interpolate(effnet_embedding, scale_factor=1/self.scale_factor, mode="nearest")
         upscaled_image = torch.nn.functional.interpolate(x, scale_factor=1/self.scale_factor, mode="nearest")
         return effnet_embedding, upscaled_image
-
 
 class InpaintFilter(BaseFilter):
     def __init__(self, device, thresold=[0.04, 0.4], p_outpaint=0.4):
@@ -452,7 +447,6 @@ class InpaintFilter(BaseFilter):
             inpainted_images = torch.where(mask, torch.ones_like(x), x)
         c_inpaint = torch.cat([inpainted_images, mask], dim=1)
         return c_inpaint.cpu()
-
 
 # IDENTITY
 class IdentityFilter(BaseFilter):
@@ -740,28 +734,17 @@ class StageC(nn.Module):
                 t_cond = kwargs.get(c, torch.zeros_like(r))
                 r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
             
-            # clip = self.gen_c_embeddings(clip_text, clip_text_pooled, clip_img)
-            clip = checkpoint(self.gen_c_embeddings, clip_text, clip_text_pooled, clip_img, use_reentrant=True)
-            # print()
-            # print("r", r_embed.requires_grad)
-            # print("clip", clip.requires_grad)
+            clip = self.gen_c_embeddings(clip_text, clip_text_pooled, clip_img)
 
             # Model Blocks
-            # x = self.embedding(x)
-            x = checkpoint(self.embedding, x, use_reentrant=False)
-            # print("x 1", x.requires_grad, x.grad)
+            x = self.embedding(x)
             if cnet is not None:
                 cnet = ControlNetDeliverer(cnet)
 
-            # level_outputs = self._down_encode(x, r_embed, clip, cnet)
-            level_outputs = checkpoint(self._down_encode, x, r_embed, clip, cnet, use_reentrant=False)
-            
-            # x = self._up_decode(level_outputs, r_embed, clip, cnet)
-            x = checkpoint(self._up_decode, level_outputs, r_embed, clip, cnet, use_reentrant=True)
-            # print("x 2", x.requires_grad, x.grad)
+            level_outputs = self._down_encode(x, r_embed, clip, cnet)            
+            x = self._up_decode(level_outputs, r_embed, clip, cnet)
             
             clf = self.clf(x)
-            clf.retain_grad()
             return clf
 
     def update_weights_ema(self, src_model, beta=0.999):

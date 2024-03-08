@@ -20,6 +20,7 @@ from optim_util import step_adafactor
 from bucketeer import Bucketeer
 from warmup_scheduler import GradualWarmupScheduler
 from fractions import Fraction
+from torch.utils.checkpoint import checkpoint
 
 from torchtools.transforms import SmartCrop
 
@@ -315,8 +316,9 @@ def main():
 		density=settings["image_size"] ** 2,
 		factor=32,
 		ratios=settings["multi_aspect_ratio"],
-		p_random_ratio=settings["bucketeer_random_ratio"] if "bucketeer_random_ratio" in settings else 0,
+		p_random_ratio=0,
 		transforms=torchvision.transforms.ToTensor(),
+		settings=settings
 	)
 
 	# Add duplicate dropout batches with a sufficient amount of steps only when not creating or using a latent cache
@@ -356,6 +358,11 @@ def main():
 	dataloader = DataLoader(
 		dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
 	)
+
+	# Uncomment this to figure out what's wrong with the dataloader:
+	# for batch in tqdm(dataloader):
+	# 	pass
+	# return
 
 	# Optional Latent Caching Step:
 	te_dropout, pool_dropout = text_cache(True, text_model, accelerator, [], [], tokenizer, settings, settings["batch_size"])
@@ -447,7 +454,7 @@ def main():
 		# return
 	else:
 		generator = load_model(generator, model_id='generator', settings=settings)
-	# enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
+	enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
 	generator = generator.to(accelerator.device, dtype=main_dtype)
 
 	if generator_ema is not None:
@@ -456,6 +463,7 @@ def main():
 		generator_ema.to(accelerator.device, dtype=main_dtype)
 
 	# Load optimizers
+	print("Loading optimizer.")
 	optimizer_type = settings["optimizer_type"].lower()
 	optimizer_kwargs = {}
 	if optimizer_type == "adamw":
@@ -595,16 +603,32 @@ def main():
 
 					if (total_steps+1) % settings["save_every"] == 0:
 						accelerator.wait_for_everyone()
-						save_model(
-							accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
-							model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}")
+						if accelerator.is_main_process:
+							save_model(
+								accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
+								model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}")
 
 			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
+				accelerator.wait_for_everyone()
 				if accelerator.is_main_process:
-					accelerator.wait_for_everyone()
 					save_model(
 						accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
 						model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e+1}")
+			
+			settings["seed"] += 1
+			set_seed(settings["seed"])
+
+			# Shuffle order of batches after each epoch
+			if not is_latent_cache:
+				random.shuffle(dataset)
+				dataloader = DataLoader(
+					dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
+				)
+			else:
+				random.shuffle(latent_cache)
+				dataloader = DataLoader(
+					latent_cache, batch_size=1, collate_fn=latent_collate, shuffle=False, pin_memory=False
+				)
 
 if __name__ == "__main__":
 	main()
