@@ -1,8 +1,12 @@
-# TODO: Make sensible
-experiment_id: stage_c_1b_finetuning
+# Hey you, when editing this file, please make duplicates of this file to make your own finetune configurations.
+
+# Where the resulting models will be saved. Can be absolute or relative paths.
+# Example: X:\output or /some/unix/path
 checkpoint_path: output
-output_path: output
-model_name: prototype_run_14
+# The name of the training run and model name
+# Example: X:\output\unet\stage_c_1b_finetuning.safetensors or /some/unix/path/output/unet/stage_c_1b_finetuning.safetensors
+# This will also name the output checkpoints.
+experiment_id: stage_c_1b_finetuning
 
 # Stage C parameters:
 # Valid settings: 1B or 3.6B
@@ -57,7 +61,8 @@ max_token_limit: 900
 # On Linux, this will enable Pytorch specific optimisations for Ampere or later GPUs. (RTX 30x0 or A100)
 # This option has no effect on Windows 10 and 11.
 #use_pytorch_cross_attention: true
-# Whether to use xformers or not
+
+# Whether to use xformers over pytorch's flash attention
 flash_attention: true
 
 # Which optimiser you prefer using.
@@ -95,3 +100,13 @@ create_latent_cache: false
 # If you know your current folder of latent caches is fully cached, also enable this to free more
 # memory. Otherwise leave this false.
 cache_text_encoder: false
+
+# Trains the text encoder.
+# Using this will not allow you to cache the text encoder during latent caching.
+# You have been warned.
+# Training 1B under 12GB cannot be done with text encoder training.
+
+# If you plan on training 3.6B and want to save time and memory,
+# do text encoder training on the 1B model so 3.6B takes less time to
+# converge on the updated text encoder weights.
+train_text_encoder: false

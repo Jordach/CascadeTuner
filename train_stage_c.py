@@ -11,6 +11,7 @@ import os
 import math
 import copy
 import random
+import itertools
 from core_util import create_folder_if_necessary, load_or_fail, load_optimizer, save_model, save_optimizer, update_weights_ema
 from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseCond, DDPMSampler, P2LossWeight, AdaptiveLossWeight
 from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock, enable_checkpointing_for_stable_cascade_blocks
@@ -81,6 +82,9 @@ def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, 
 		token_chunks_limit = 1
 
 	if dropout:
+		# Do not train the text encoder when getting empty embeds
+		if settings["train_text_encoder"]:
+			text_model.eval()
 		captions_unpooled = ["" for _ in range(batch_size)]
 		clip_tokens_unpooled = tokenizer(captions_unpooled, truncation=True, padding="max_length",
 										max_length=tokenizer.model_max_length,
@@ -89,6 +93,9 @@ def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, 
 		text_encoder_output = text_model(**clip_tokens_unpooled, output_hidden_states=True)
 		text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
 		text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
+		# Restore training mode for the text encoder
+		if settings["train_text_encoder"]:
+			text_model.train()
 	else:
 		for chunk_id in range(len(captions)):
 			# Hard limit the tokens to fit in memory for the rare event that latent caches that somehow exceed the limit.
@@ -136,9 +143,9 @@ def main():
 	settings["use_pytorch_cross_attention"] = False
 	settings["flash_attention"] = False
 	settings["multi_aspect_ratio"] = [1/1, 1/2, 1/3, 2/3, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 9/16]
-	settings["model_name"] = "untitled_model"
 	settings["adaptive_loss_weight"] = False
 	settings["loss_floor"] = 0
+	settings["train_text_encoder"] = False
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
@@ -178,6 +185,18 @@ def main():
 	else:
 		raise ValueError("No configuration supplied, stopping.")
 
+	if settings["train_text_encoder"] and settings["cache_text_encoder"]:
+		raise ValueError("train_text_encoder and cache_text_encoder cannot both be enabled")
+
+	# Ensure text encoder and unet paths exist
+	unet_path = f"{settings['output']}/unet/"
+	tenc_path = f"{settings['output']}/text/"
+	if not os.path.exists(unet_path):
+		os.makedirs(unet_path)
+	if not os.path.exists(tenc_path):
+		os.makedirs(tenc_path)
+
+
 	if settings["use_pytorch_cross_attention"]:
 		print("Activating efficient cross attentions.")
 		torch.backends.cuda.enable_math_sdp(True)
@@ -190,7 +209,7 @@ def main():
 		SmartCrop(settings["image_size"], randomize_p=0.3, randomize_q=0.2)
 	])
 
-	full_path = f"{settings['checkpoint_path']}/{settings['experiment_id']}/info.json"
+	full_path = f"{settings['checkpoint_path']}/info.json"
 	info_dict = load_or_fail(full_path, wandb_run_id=None) or {}
 	info = info | info_dict
 	set_seed(settings["seed"])
@@ -216,7 +235,7 @@ def main():
 	accelerator = Accelerator(
 		gradient_accumulation_steps=settings["grad_accum_steps"],
 		log_with="tensorboard",
-		project_dir=f"{settings['output_path']}"
+		project_dir=f"{settings['checkpoint_path']}"
 	)
 
 	# Model Loading For Latent Caching
@@ -486,7 +505,10 @@ def main():
 		
 		optimizer = transformers.optimization.Adafactor
 
-	optimizer = optimizer(generator.parameters(), lr=settings["lr"], **optimizer_kwargs)
+	optimized_params = (
+		itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.params()
+	)
+	optimizer = optimizer(optimized_params, lr=settings["lr"], **optimizer_kwargs)
 
 	# Special hook for stochastic rounding for adafactor
 	if optimizer_type == "adafactorstoch":
@@ -509,7 +531,7 @@ def main():
 
 	# Special case for handling latent caching
 	# saves one second of time to avoid expensive key checking
-	# We enable this if we've just finished latent caching and want to immediately start training thereafter
+	# This is enabled if we've just finished latent caching and want to immediately start training thereafter
 	is_latent_cache = False
 	if settings["use_latent_cache"] or settings["create_latent_cache"]:
 		is_latent_cache = True
@@ -518,6 +540,10 @@ def main():
 			del text_model
 		del effnet
 		torch.cuda.empty_cache()
+
+	# Turn on text encoder training if used
+	if settings["train_text_encoder"]:
+		text_model.train()
 
 	with accelerator.accumulate(generator):
 		for e in epoch_bar:
@@ -606,14 +632,20 @@ def main():
 						if accelerator.is_main_process:
 							save_model(
 								accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
-								model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}")
+								model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
+							)
+							text_model.save_pretrained(tenc_path)
+							tokenizer.save_vocabulary(tenc_path)
 
 			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
 				accelerator.wait_for_everyone()
 				if accelerator.is_main_process:
 					save_model(
 						accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
-						model_id = f"{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e+1}")
+						model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
+					)
+					text_model.save_pretrained(tenc_path)
+					tokenizer.save_vocabulary(tenc_path)
 			
 			settings["seed"] += 1
 			set_seed(settings["seed"])
@@ -629,6 +661,7 @@ def main():
 				dataloader = DataLoader(
 					latent_cache, batch_size=1, collate_fn=latent_collate, shuffle=False, pin_memory=False
 				)
+			accelerator.prepare(dataloader)
 
 if __name__ == "__main__":
 	main()
