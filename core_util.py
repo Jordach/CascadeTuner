@@ -123,7 +123,7 @@ def save_optimizer(optim, optim_id=None, full_path=None, settings=None, accelera
 def save_model(model, model_id=None, full_path=None, accelerator=None, settings=None, step=1):
 	if accelerator.is_main_process:
 		if model_id is not None and full_path is None:
-			full_path = f"{settings['checkpoint_path']}/{settings['experiment_id']}/{model_id}.{settings['checkpoint_extension']}"
+			full_path = f"{settings['checkpoint_path']}/{model_id}.{settings['checkpoint_extension']}"
 		elif full_path is None and model_id is None:
 			raise ValueError(
 				"This method expects either 'model_id' or 'full_path' to be defined"
