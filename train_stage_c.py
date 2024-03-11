@@ -193,7 +193,7 @@ def main():
 	tenc_path = f"{settings['output']}/text/"
 	if not os.path.exists(unet_path):
 		os.makedirs(unet_path)
-	if not os.path.exists(tenc_path):
+	if not os.path.exists(tenc_path) and settings["train_text_encoder"]:
 		os.makedirs(tenc_path)
 
 
@@ -634,8 +634,9 @@ def main():
 								accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
 								model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
 							)
-							text_model.save_pretrained(tenc_path)
-							tokenizer.save_vocabulary(tenc_path)
+							if settings["train_text_encoder"]:
+								text_model.save_pretrained(tenc_path)
+								tokenizer.save_vocabulary(tenc_path)
 
 			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
 				accelerator.wait_for_everyone()
@@ -644,8 +645,9 @@ def main():
 						accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
 						model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
 					)
-					text_model.save_pretrained(tenc_path)
-					tokenizer.save_vocabulary(tenc_path)
+					if settings["train_text_encoder"]:
+						text_model.save_pretrained(tenc_path)
+						tokenizer.save_vocabulary(tenc_path)
 			
 			settings["seed"] += 1
 			set_seed(settings["seed"])
