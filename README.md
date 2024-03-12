@@ -20,7 +20,7 @@ Installing xformers:
 `pip install --no-deps xformers --index-url https://download.pytorch.org/whl/cu121`
 
 # Launching your script:
-`accelerate launch --mixed_precision="no" train_stage_c.py --yaml "configs/your_yaml_here.yaml"`
+`accelerate launch --mixed_precision="bf16" train_stage_c.py --yaml "configs/your_yaml_here.yaml"`
 
 If it doesn't launch:
 `conda install -c defaults intel-openmp -f` usually fixes PIL issues under Windows 10/11.
