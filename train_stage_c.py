@@ -189,8 +189,8 @@ def main():
 		raise ValueError("train_text_encoder and cache_text_encoder cannot both be enabled")
 
 	# Ensure text encoder and unet paths exist
-	unet_path = f"{settings['output']}/unet/"
-	tenc_path = f"{settings['output']}/text/"
+	unet_path = f"{settings['checkpoint_path']}/unet/"
+	tenc_path = f"{settings['checkpoint_path']}/text/"
 	if not os.path.exists(unet_path):
 		os.makedirs(unet_path)
 	if not os.path.exists(tenc_path) and settings["train_text_encoder"]:
