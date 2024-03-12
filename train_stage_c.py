@@ -255,6 +255,15 @@ def main():
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	image_model.eval()
 
+	# Turn on text encoder training if used
+	if settings["train_text_encoder"]:
+		text_model.requires_grad_(True)
+		text_model.train()
+		text_model.gradient_checkpointing_enable()
+	else:
+		text_model.requires_grad_(False)
+		text_model.eval()
+
 	pre_dataset = []
 	# Create second dataset so all images are batched if we're either caching latents or 
 	dataset = []
@@ -540,16 +549,6 @@ def main():
 			del text_model
 		del effnet
 		torch.cuda.empty_cache()
-
-	# Turn on text encoder training if used
-	if settings["train_text_encoder"]:
-		text_model.requires_grad_(True)
-		text_model.train()
-		text_model.gradient_checkpointing_enable()
-	else:
-		text_model.requires_grad_(False)
-		text_model.eval()
-
 
 	with accelerator.accumulate(generator):
 		for e in epoch_bar:
