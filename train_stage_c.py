@@ -249,7 +249,7 @@ def main():
 
 	# CLIP Encoders
 	print("Loading CLIP Text Encoder")
-	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
+	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).to(accelerator.device, dtype=main_dtype)
 	text_model.eval()
 	print("Loading CLIP Image Encoder")
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
@@ -543,7 +543,13 @@ def main():
 
 	# Turn on text encoder training if used
 	if settings["train_text_encoder"]:
+		text_model.requires_grad_(True)
 		text_model.train()
+		text_model.gradient_checkpointing_enable()
+	else:
+		text_model.requires_grad_(False)
+		text_model.eval()
+
 
 	with accelerator.accumulate(generator):
 		for e in epoch_bar:
@@ -655,11 +661,13 @@ def main():
 			# Shuffle order of batches after each epoch
 			if not is_latent_cache:
 				random.shuffle(dataset)
+				dataloader = ""
 				dataloader = DataLoader(
 					dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
 				)
 			else:
 				random.shuffle(latent_cache)
+				dataloader = ""
 				dataloader = DataLoader(
 					latent_cache, batch_size=1, collate_fn=latent_collate, shuffle=False, pin_memory=False
 				)
