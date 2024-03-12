@@ -1,6 +1,6 @@
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch>=2.2+cu118
-torchvision>=0.16.2+cu118
+torch>=2.2+cu122
+torchvision>=0.16.2+cu112
 accelerate>=0.25.0
 bitsandbytes>=0.42.0
 transformers>=4.30.0
