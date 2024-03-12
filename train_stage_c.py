@@ -643,8 +643,8 @@ def main():
 								model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
 							)
 							if settings["train_text_encoder"]:
-								text_model.save_pretrained(tenc_path)
-								tokenizer.save_vocabulary(tenc_path)
+								text_model.save_pretrained(os.path.join(tenc_path, f"text_encoder_e{e}_s{current_step}/"))
+								tokenizer.save_vocabulary(os.path.join(tenc_path, f"text_encoder_e{e}_s{current_step}/"))
 
 			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
 				accelerator.wait_for_everyone()
@@ -654,8 +654,8 @@ def main():
 						model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
 					)
 					if settings["train_text_encoder"]:
-						text_model.save_pretrained(tenc_path)
-						tokenizer.save_vocabulary(tenc_path)
+						text_model.save_pretrained(os.path.join(tenc_path, f"text_encoder_e{e+1}/"))
+						tokenizer.save_vocabulary(os.path.join(tenc_path, f"text_encoder_e{e+1}/"))
 			
 			settings["seed"] += 1
 			set_seed(settings["seed"])
