@@ -28,7 +28,7 @@ from torchtools.transforms import SmartCrop
 from torch.utils.data import DataLoader
 from accelerate import init_empty_weights, Accelerator
 from accelerate.utils import set_module_tensor_to_device, set_seed
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from tqdm import tqdm
 import yaml
 import json
@@ -550,6 +550,9 @@ def main():
 		del effnet
 		torch.cuda.empty_cache()
 
+	# Handle 
+	text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
+
 	with accelerator.accumulate(generator):
 		for e in epoch_bar:
 			current_step = 0
@@ -561,7 +564,7 @@ def main():
 				dropout = batch["dropout"]
 				batch_size = len(batch["captions"])
 				
-				with torch.no_grad():
+				with text_encoder_context:
 					text_embeddings = None
 					text_embeddings_pool = None
 					if is_latent_cache:
@@ -576,7 +579,7 @@ def main():
 					else:
 						text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
 					
-					
+				with torch.no_grad():
 					# Handle Image Encoding
 					image_embeddings = torch.zeros(batch_size, 768, device=accelerator.device, dtype=main_dtype)
 					if not dropout:
