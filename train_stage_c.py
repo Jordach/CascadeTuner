@@ -515,7 +515,7 @@ def main():
 		optimizer = transformers.optimization.Adafactor
 
 	optimized_params = (
-		itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.params()
+		itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters()
 	)
 	optimizer = optimizer(optimized_params, lr=settings["lr"], **optimizer_kwargs)
 
