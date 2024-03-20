@@ -609,7 +609,7 @@ def main():
 
 				# Backwards Pass
 				accelerator.backward(loss_adjusted.to(dtype=torch.float32))
-				grad_norm = nn.utils.clip_grad_norm_(generator.parameters(), 1.0)
+				grad_norm = nn.utils.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				optimizer.step()
 				scheduler.step()
 				optimizer.zero_grad()
