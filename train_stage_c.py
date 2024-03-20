@@ -640,7 +640,7 @@ def main():
 						if accelerator.is_main_process:
 							save_model(
 								accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
-								model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
+								model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
 							)
 							if settings["train_text_encoder"]:
 								text_model.save_pretrained(os.path.join(tenc_path, f"text_encoder_e{e}_s{current_step}/"))
@@ -651,7 +651,7 @@ def main():
 				if accelerator.is_main_process:
 					save_model(
 						accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
-						model_id = f"unet/{settings['model_name']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
+						model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
 					)
 					if settings["train_text_encoder"]:
 						text_model.save_pretrained(os.path.join(tenc_path, f"text_encoder_e{e+1}/"))
