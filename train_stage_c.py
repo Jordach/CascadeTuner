@@ -249,7 +249,7 @@ def main():
 
 	# CLIP Encoders
 	print("Loading CLIP Text Encoder")
-	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).to(accelerator.device, dtype=main_dtype)
+	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).to(accelerator.device, dtype=main_dtype if not settings["train_text_encoder"] else torch.float32)
 	text_model.eval()
 	print("Loading CLIP Image Encoder")
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
@@ -635,7 +635,7 @@ def main():
 					epoch_bar.set_postfix(logs)
 					accelerator.log(logs, step=total_steps)
 
-					if (total_steps+1) % settings["save_every"] == 0:
+					if (current_step) % settings["save_every"] == 0:
 						accelerator.wait_for_everyone()
 						if accelerator.is_main_process:
 							save_model(
