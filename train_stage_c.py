@@ -105,11 +105,12 @@ def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, 
 			token_chunk = captions[chunk_id].to(accelerator.device)
 			token_chunk = torch.cat((torch.full((token_chunk.shape[0], 1), tokenizer.bos_token_id).to(accelerator.device), token_chunk, torch.full((token_chunk.shape[0], 1), tokenizer.eos_token_id).to(accelerator.device)), 1)
 			attn_chunk = att_mask[chunk_id].to(accelerator.device)
+			attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device)), 1)
 			# First 75 tokens we allow BOS to not be masked - otherwise we mask them out
-			if chunk_id == 0:
-				attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
-			else:
-				attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
+			#if chunk_id == 0:
+			#	attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
+			#else:
+			#	attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
 			text_encoder_output = text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
 
 			if text_embeddings is None:
