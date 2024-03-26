@@ -174,7 +174,7 @@ class CachedLatents(Dataset):
 
 		cache = torch.load(self.cache_paths[index][0], map_location=self.accelerator.device)
 		if self.cache_paths[index][1]:
-			cache[0]["dropout"] = True
+			cache["dropout"] = True
 
 		return cache
 
