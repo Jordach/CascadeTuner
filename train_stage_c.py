@@ -578,10 +578,7 @@ def main():
 					text_embeddings = None
 					text_embeddings_pool = None
 					if is_latent_cache:
-						if dropout:
-							text_embeddings = te_dropout
-							text_embeddings_pool = pool_dropout
-						elif "text_cache" in batch[0] and "pool_cache" in batch[0]:
+						if "text_cache" in batch[0] and "pool_cache" in batch[0]:
 							text_embeddings = batch[0]["text_cache"]
 							text_embeddings_pool = batch[0]["pool_cache"]
 						else:
