@@ -563,7 +563,7 @@ def main():
 
 	# Handle 
 	text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
-
+	last_grad_norm = 0
 	with accelerator.accumulate(generator) if not settings["train_text_encoder"] else accelerator.accumulate(generator, text_model):
 		for e in epoch_bar:
 			current_step = 0
@@ -619,7 +619,7 @@ def main():
 				accelerator.backward(loss_adjusted)
 
 				if accelerator.sync_gradients:
-					accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				optimizer.step()
 				scheduler.step()
 				optimizer.zero_grad()
@@ -638,6 +638,7 @@ def main():
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
+						"grad_norm": last_grad_norm.mean().item(),
 						"lr": scheduler.get_last_lr()[0]
 					}
 
