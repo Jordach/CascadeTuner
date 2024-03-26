@@ -438,6 +438,8 @@ def main():
 	if settings["create_latent_cache"] or settings["use_latent_cache"]:
 		if settings["dropout"] > 0:
 			if len(latent_cache) > 100:
+				if accelerator.is_main_process:
+					print(f"Original Cached Step Count: {len(latent_cache)}")
 				total_batches = int((len(latent_cache)-1) * settings["dropout"])
 				# Handle multi-GPU proper
 				if accelerator.num_processes > 1:
@@ -448,7 +450,6 @@ def main():
 					latent_cache.add_cache_location(batch[0], True)
 
 				if accelerator.is_main_process:
-					print(f"Original Cached Step Count: {len(latent_cache)}")
 					print(f"Duplicated {len(dropouts)} caches for caption dropout.")
 					print(f"Total Cached Step Count: {len(latent_cache)}")
 		
