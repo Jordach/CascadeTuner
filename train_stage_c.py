@@ -543,8 +543,8 @@ def main():
 		accelerator.init_trackers("training")
 
 	# Training loop
-	steps_bar = tqdm(range(len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset)), desc="Steps to Epoch")
-	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs")
+	steps_bar = tqdm(range(len(dataloader)), desc="Steps to Epoch", disable=not accelerator.is_local_main_process)
+	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs", disable=not accelerator.is_local_main_process)
 	generator.train()
 	total_steps = 0
 
@@ -566,7 +566,7 @@ def main():
 	with accelerator.accumulate(generator) if not settings["train_text_encoder"] else accelerator.accumulate(generator, text_model):
 		for e in epoch_bar:
 			current_step = 0
-			steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
+			steps_bar.reset(total=len(dataloader))
 			for step, batch in enumerate(dataloader):
 				captions = batch[0]["tokens"]
 				attn_mask = batch[0]["att_mask"]
@@ -617,7 +617,8 @@ def main():
 					# Backwards Pass
 					accelerator.backward(loss_adjusted)
 
-				grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+				if accelerator.sync_gradients:
+					accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				optimizer.step()
 				scheduler.step()
 				optimizer.zero_grad()
@@ -636,7 +637,6 @@ def main():
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
-						"grad_norm": grad_norm.mean().item(),
 						"lr": scheduler.get_last_lr()[0]
 					}
 
