@@ -568,8 +568,6 @@ def main():
 			current_step = 0
 			steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
 			for step, batch in enumerate(dataloader):
-				print(step)
-				print(batch)
 				captions = batch["tokens"]
 				attn_mask = batch["att_mask"]
 				images = batch["images"] if not is_latent_cache else None
