@@ -534,11 +534,14 @@ def main():
 	if optimizer_type == "adafactorstoch":
 		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
 
+	generator, dataloader, text_model, image_model, optimizer = accelerator.prepare(generator, dataloader, text_model, image_model, optimizer)
+
 	# Load scheduler
 	scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=settings["warmup_updates"])
-	scheduler.last_epoch = info["total_steps"] if "total_steps" in info else len(dataloader)
+	scheduler.last_epoch = len(dataloader)
 
-	generator, dataloader, text_model, image_model, optimizer, scheduler = accelerator.prepare(generator, dataloader, text_model, image_model, optimizer, scheduler)
+	scheduler = accelerator.prepare(scheduler)
+
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
@@ -639,7 +642,7 @@ def main():
 					logs = {
 						"loss": loss_adjusted.mean().item(),
 						#"grad_norm": last_grad_norm,
-						"lr": scheduler.get_last_lr()
+						"lr": scheduler.get_last_lr()[0]
 					}
 
 					epoch_bar.set_postfix(logs)
