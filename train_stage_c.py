@@ -601,24 +601,25 @@ def main():
 					# Get Latents
 					latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch[0]["effnet_cache"]
 					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=main_dtype), shift=1, loss_shift=1)
-				
-				# Forwards Pass
-				with accelerator.autocast():
-					pred = generator(noised, noise_cond, 
-						**{
-							"clip_text": text_embeddings.to(dtype=main_dtype),
-							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
-							"clip_img": image_embeddings.to(dtype=main_dtype)
-						}
-					)
-					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
-					loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
+				with torch.autograd.set_detect_anomaly(True):
+					# Forwards Pass
+					with accelerator.autocast():
+						pred = generator(noised, noise_cond, 
+							**{
+								"clip_text": text_embeddings.to(dtype=main_dtype),
+								"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
+								"clip_img": image_embeddings.to(dtype=main_dtype)
+							}
+						)
+						loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
+						loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
 
-				if isinstance(gdf.loss_weight, AdaptiveLossWeight):
-					gdf.loss_weight.update_buckets(logSNR, loss)
+					if isinstance(gdf.loss_weight, AdaptiveLossWeight):
+						gdf.loss_weight.update_buckets(logSNR, loss)
 
-				# Backwards Pass
-				accelerator.backward(loss_adjusted)
+					# Backwards Pass
+					accelerator.backward(loss_adjusted)
+
 				grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				optimizer.step()
 				scheduler.step()
