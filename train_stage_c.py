@@ -618,7 +618,7 @@ def main():
 					gdf.loss_weight.update_buckets(logSNR, loss)
 
 				# Backwards Pass
-				accelerator.backward(loss_adjusted.to(dtype=torch.float32))
+				accelerator.backward(loss_adjusted)
 				grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				optimizer.step()
 				scheduler.step()
