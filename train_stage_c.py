@@ -453,7 +453,7 @@ def main():
 					print(f"Total Cached Step Count: {len(latent_cache)}")
 		
 		dataloader = DataLoader(
-			latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, pin_memory=False
+			latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, 
 		)
 
 	# Special things
@@ -563,11 +563,13 @@ def main():
 	# Handle 
 	text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
 
-	with accelerator.accumulate(generator):
+	with accelerator.accumulate(generator) if not settings["train_text_encoder"] else accelerator.accumulate(generator, text_model):
 		for e in epoch_bar:
 			current_step = 0
 			steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
 			for step, batch in enumerate(dataloader):
+				print(step)
+				print(batch)
 				captions = batch["tokens"]
 				attn_mask = batch["att_mask"]
 				images = batch["images"] if not is_latent_cache else None
