@@ -400,7 +400,7 @@ def main():
 			cache[0]["dropout"] = True
 		return cache
 
-	latent_cache = CachedLatents()
+	latent_cache = CachedLatents(accelerator=accelerator)
 	# Create a latent cache if we're not going to load an existing one.
 	if settings["create_latent_cache"] and not settings["use_latent_cache"]:
 		create_folder_if_necessary(settings["latent_cache_location"])

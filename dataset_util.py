@@ -161,8 +161,9 @@ import torch
 
 # This is known to work on multi-GPU setups
 class CachedLatents(Dataset):
-	def __init__(self):
+	def __init__(self, accelerator):
 		self.cache_paths = []
+		self.accelerator = accelerator
 
 	def __len__(self):
 		return len(self.cache_paths)
@@ -171,7 +172,7 @@ class CachedLatents(Dataset):
 		if index == 0:
 			random.shuffle(self.cache_paths)
 
-		cache = torch.load(self.cache_paths[index][0])
+		cache = torch.load(self.cache_paths[index][0], map_location=self.accelerator.device)
 		if self.cache_paths[index][1]:
 			cache[0]["dropout"] = True
 
