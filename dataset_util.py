@@ -175,7 +175,7 @@ class CachedLatents(Dataset):
 		if self.cache_paths[index][1]:
 			cache[0]["dropout"] = True
 
-		return cache[0]
+		return cache
 
 	def get_cache_list(self):
 		return self.cache_paths

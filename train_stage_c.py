@@ -568,11 +568,11 @@ def main():
 			current_step = 0
 			steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
 			for step, batch in enumerate(dataloader):
-				captions = batch["tokens"]
-				attn_mask = batch["att_mask"]
-				images = batch["images"] if not is_latent_cache else None
-				dropout = batch["dropout"]
-				batch_size = len(batch["captions"])
+				captions = batch[0]["tokens"]
+				attn_mask = batch[0]["att_mask"]
+				images = batch[0]["images"] if not is_latent_cache else None
+				dropout = batch[0]["dropout"]
+				batch_size = len(batch[0]["captions"])
 				
 				with text_encoder_context:
 					text_embeddings = None
@@ -581,9 +581,9 @@ def main():
 						if dropout:
 							text_embeddings = te_dropout
 							text_embeddings_pool = pool_dropout
-						elif "text_cache" in batch and "pool_cache" in batch:
-							text_embeddings = batch["text_cache"]
-							text_embeddings_pool = batch["pool_cache"]
+						elif "text_cache" in batch[0] and "pool_cache" in batch[0]:
+							text_embeddings = batch[0]["text_cache"]
+							text_embeddings_pool = batch[0]["pool_cache"]
 						else:
 							text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
 					else:
@@ -595,11 +595,11 @@ def main():
 					if not dropout:
 						rand_id = np.random.rand(batch_size) > 0.9
 						if any(rand_id):
-							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id].to(dtype=main_dtype))).image_embeds.to(dtype=main_dtype) if not is_latent_cache else batch["clip_cache"][rand_id].to(dtype=main_dtype)
+							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id].to(dtype=main_dtype))).image_embeds.to(dtype=main_dtype) if not is_latent_cache else batch[0]["clip_cache"][rand_id].to(dtype=main_dtype)
 					image_embeddings = image_embeddings.unsqueeze(1)
 
 					# Get Latents
-					latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch["effnet_cache"]
+					latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch[0]["effnet_cache"]
 					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=main_dtype), shift=1, loss_shift=1)
 				
 				# Forwards Pass
