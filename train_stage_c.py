@@ -433,7 +433,7 @@ def main():
 		
 		print("Loading media from the Latent Cache.")
 		for cache in os.listdir(settings["latent_cache_location"]):
-			latent_cache.add_cache_location((os.path.join(settings["latent_cache_location"], cache), False))
+			latent_cache.add_cache_location(os.path.join(settings["latent_cache_location"], cache), False)
 
 	# Handle duplicates for Latent Caching
 	if settings["create_latent_cache"] or settings["use_latent_cache"]:
