@@ -449,7 +449,7 @@ def main():
 					latent_cache.add_cache_location(batch[0], True)
 
 				print(f"Original Cached Step Count: {len(latent_cache)}")
-				print(f"Duplicated {len(new_dropouts)} caches for caption dropout.")
+				print(f"Duplicated {len(dropouts)} caches for caption dropout.")
 				print(f"Total Cached Step Count: {len(latent_cache)}")
 		
 		dataloader = DataLoader(
