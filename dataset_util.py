@@ -149,8 +149,74 @@ class BucketWalker():
 		item = self.final_dataset[idx]
 		tokens = self.tokenizer(
 			item["caption"],
-			padding="do_not_pad",
+			padding=False,
+			add_special_tokens=False,
 			verbose=False
 		).input_ids
 		
 		return {"images": item["path"], "caption": item["caption"], "tokens": tokens, "aspects": item["aspect"]}
+
+from torch.utils.data import Dataset
+import torch
+
+# This is known to work on multi-GPU setups
+class CachedLatents(Dataset):
+	def __init__(self):
+		self.cache_paths = []
+
+	def __len__(self):
+		return len(self.cache_paths)
+
+	def __getitem__(self, index):
+		if index == 0:
+			random.shuffle(self.cache_paths)
+
+		cache = torch.load(self.cache_paths[0])
+		if self.cache_paths[1]:
+			cache[0]["dropout"] = True
+
+		return cache
+
+	def get_cache_list(self):
+		return self.cache_paths
+
+	def add_cache_location(self, cache_path, dropout):
+		self.cache_paths.append((cache_path, dropout))
+
+# Work in progress
+class RegularLatents(Dataset):
+	def __init__(self, bucketer, accelerator):
+		self.batches = []
+		self.bucketer = bucketer
+		self.accelerator = accelerator
+
+	def __len__(self):
+		return len(self.batches)
+
+	def __getitem__(self, index):
+		if index == 0:
+			random.shuffle(self.batches)
+
+		images = []
+		for i in range(0, len(self.batches[index][0]["images"])):
+			images.append(self.bucketer.load_and_resize(self.batches[index][0][0]["images"][i]), float(self.batches[index][0][0]["aspect"][i]))
+		images = torch.stack(images)
+		images = images.to(memory_format=torch.contiguous_format)
+		images = images.to(self.accelerator.device)
+
+		batch = {
+			"aspects": self.batches[0][0]["aspects"],
+			"images": images,
+			"tokens": self.batches[0][0]["tokens"],
+			"att_mask": self.batches[0][0]["att_mask"],
+			"captions": self.batches[0][0]["captions"],
+			"dropout": False
+		}
+
+		return batch
+
+	def get_batch_list(self):
+		return self.batches
+	
+	def add_latent_batch(self, batch, dropout):
+		self.batches.append((batch, dropout))

@@ -15,7 +15,7 @@ import itertools
 from core_util import create_folder_if_necessary, load_or_fail, load_optimizer, save_model, save_optimizer, update_weights_ema
 from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseCond, DDPMSampler, P2LossWeight, AdaptiveLossWeight
 from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock, enable_checkpointing_for_stable_cascade_blocks
-from dataset_util import BucketWalker
+from dataset_util import BucketWalker, CachedLatents, RegularLatents
 from xformers_util import convert_state_dict_mha_to_normal_attn
 from optim_util import step_adafactor
 from bucketeer import Bucketeer
@@ -266,8 +266,6 @@ def main():
 		text_model.eval()
 
 	pre_dataset = []
-	# Create second dataset so all images are batched if we're either caching latents or 
-	dataset = []
 
 	tokenizer = AutoTokenizer.from_pretrained(settings["clip_text_model_name"])
 	# Setup Dataloader:
@@ -317,7 +315,7 @@ def main():
 			{"input_ids": raw_tokens},
 			padding="max_length",
 			max_length=len_input,
-			return_tensors="pt"
+			return_tensors="pt",
 		).to(accelerator.device)
 		batch_tokens = tokens["input_ids"].to(accelerator.device)
 		batch_att_mask = tokens["attention_mask"].to(accelerator.device)
@@ -336,7 +334,10 @@ def main():
 		pre_dataset, batch_size=settings["batch_size"], shuffle=False, collate_fn=pre_collate, pin_memory=False,
 	)
 
-	# Skip dataloading pass if we're using a latent cache
+	# Create second dataset so all images are batched if we're either caching latents or loading direct from disk
+	dataset = []
+
+	# Skip initial dataloading pass if we're using a latent cache
 	if not settings["use_latent_cache"]:
 		for batch in pre_dataloader:
 			dataset.append(batch)
@@ -384,6 +385,7 @@ def main():
 	set_seed(settings["seed"])
 	if not settings["create_latent_cache"]:
 		random.shuffle(dataset)
+		
 	dataloader = DataLoader(
 		dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
 	)
@@ -401,7 +403,7 @@ def main():
 			cache[0]["dropout"] = True
 		return cache
 
-	latent_cache = []
+	latent_cache = CachedLatents()
 	# Create a latent cache if we're not going to load an existing one.
 	if settings["create_latent_cache"] and not settings["use_latent_cache"]:
 		create_folder_if_necessary(settings["latent_cache_location"])
@@ -418,7 +420,7 @@ def main():
 			
 			file_name = f"latent_cache_{step}.pt" if not settings["cache_text_encoder"] else f"latent_cache_te_{step}.pt"
 			torch.save(batch, os.path.join(settings["latent_cache_location"], file_name))
-			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], file_name)})
+			latent_cache.add_cache_location(os.path.join(settings["latent_cache_location"], file_name), False)
 			step += 1
 	
 	elif settings["use_latent_cache"]:
@@ -431,23 +433,27 @@ def main():
 		
 		print("Loading media from the Latent Cache.")
 		for cache in os.listdir(settings["latent_cache_location"]):
-			latent_cache.append({"path": os.path.join(settings["latent_cache_location"], cache)})
+			latent_cache.add_cache_location((os.path.join(settings["latent_cache_location"], cache), False))
 
+	# Handle duplicates for Latent Caching
 	if settings["create_latent_cache"] or settings["use_latent_cache"]:
-		# Handle duplicates for Latent Caching
 		if settings["dropout"] > 0:
 			if len(latent_cache) > 100:
-				dropouts = random.sample(latent_cache, int(len(latent_cache) * settings["dropout"]))
-				new_dropouts = copy.deepcopy(dropouts)
-				for batch in new_dropouts:
-					batch["dropout"] = True
-				latent_cache.extend(new_dropouts)
+				total_batches = int(len(latent_cache) * settings["dropout"])
+				# Handle multi-GPU proper
+				if accelerator.num_processes > 1:
+					total_batches = total_batches // accelerator.num_processes
+
+				dropouts = random.sample(latent_cache.get_cache_list(), total_batches)
+				for batch in dropouts:
+					latent_cache.add_cache_location(batch[0], True)
+
+				print(f"Original Cached Step Count: {len(latent_cache)}")
 				print(f"Duplicated {len(new_dropouts)} caches for caption dropout.")
 				print(f"Total Cached Step Count: {len(latent_cache)}")
 		
-		random.shuffle(latent_cache)
 		dataloader = DataLoader(
-			latent_cache, batch_size=1, collate_fn=latent_collate, shuffle=False, pin_memory=False
+			latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, pin_memory=False
 		)
 
 	# Special things
@@ -558,7 +564,7 @@ def main():
 		for e in epoch_bar:
 			current_step = 0
 			steps_bar.reset(total=len(latent_cache if settings["use_latent_cache"] or settings["create_latent_cache"] else dataset))
-			for batch in dataloader:
+			for step, batch in enumerate(dataloader):
 				captions = batch["tokens"]
 				attn_mask = batch["att_mask"]
 				images = batch["images"] if not is_latent_cache else None
@@ -644,8 +650,8 @@ def main():
 								model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
 							)
 							if settings["train_text_encoder"]:
-								text_model.save_pretrained(os.path.join(tenc_path, f"text_encoder_e{e}_s{current_step}/"))
-								tokenizer.save_vocabulary(os.path.join(tenc_path, f"text_encoder_e{e}_s{current_step}/"))
+								text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_te_e{e}_s{current_step}/"))
+								tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_te_e{e}_s{current_step}/"))
 
 			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
 				accelerator.wait_for_everyone()
@@ -655,26 +661,11 @@ def main():
 						model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
 					)
 					if settings["train_text_encoder"]:
-						text_model.save_pretrained(os.path.join(tenc_path, f"text_encoder_e{e+1}/"))
-						tokenizer.save_vocabulary(os.path.join(tenc_path, f"text_encoder_e{e+1}/"))
+						text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_te_e{e+1}/"))
+						tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_te_e{e+1}/"))
 			
 			settings["seed"] += 1
 			set_seed(settings["seed"])
-
-			# Shuffle order of batches after each epoch
-			if not is_latent_cache:
-				random.shuffle(dataset)
-				dataloader = ""
-				dataloader = DataLoader(
-					dataset, batch_size=1, collate_fn=collate, shuffle=False, pin_memory=False
-				)
-			else:
-				random.shuffle(latent_cache)
-				dataloader = ""
-				dataloader = DataLoader(
-					latent_cache, batch_size=1, collate_fn=latent_collate, shuffle=False, pin_memory=False
-				)
-			accelerator.prepare(dataloader)
 
 if __name__ == "__main__":
 	main()
