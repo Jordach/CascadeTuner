@@ -51,7 +51,7 @@ info = {
 def get_conditions(batch, models, extras):
 	pass
 
-def load_model(model, model_id=None, full_path=None, strict=True, settings=None):
+def load_model(model, model_id=None, full_path=None, strict=True, settings=None, accelerator=None):
 	if model_id is not None and full_path is None:
 		full_path = f"{settings['checkpoint_path']}/{settings['experiment_id']}/{model_id}.{settings['checkpoint_extension']}"
 	elif full_path is None and model_id is None:
@@ -64,7 +64,8 @@ def load_model(model, model_id=None, full_path=None, strict=True, settings=None)
 			ckpt = convert_state_dict_mha_to_normal_attn(ckpt)
 
 		model.load_state_dict(ckpt, strict=strict)
-		print("Loaded requested model from disk.")
+		if accelerator.is_main_process:
+			print("Loaded requested model from disk.")
 		del ckpt
 	return model
 
@@ -189,17 +190,29 @@ def main():
 	if settings["train_text_encoder"] and settings["cache_text_encoder"]:
 		raise ValueError("train_text_encoder and cache_text_encoder cannot both be enabled")
 
-	# Ensure text encoder and unet paths exist
-	unet_path = f"{settings['checkpoint_path']}/unet/"
-	tenc_path = f"{settings['checkpoint_path']}/text/"
-	if not os.path.exists(unet_path):
-		os.makedirs(unet_path)
-	if not os.path.exists(tenc_path) and settings["train_text_encoder"]:
-		os.makedirs(tenc_path)
+	main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
+	if settings["dtype"] == "tf32":
+		torch.backends.cuda.matmul.allow_tf32 = True
+		torch.backends.cudnn.allow_tf32 = True
+	
+	accelerator = Accelerator(
+		gradient_accumulation_steps=settings["grad_accum_steps"],
+		log_with="tensorboard",
+		project_dir=f"{settings['checkpoint_path']}"
+	)
 
+	# Ensure text encoder and unet paths exist
+	if accelerator.is_main_process:
+		unet_path = f"{settings['checkpoint_path']}/unet/"
+		tenc_path = f"{settings['checkpoint_path']}/text/"
+		if not os.path.exists(unet_path):
+			os.makedirs(unet_path)
+		if not os.path.exists(tenc_path) and settings["train_text_encoder"]:
+			os.makedirs(tenc_path)
 
 	if settings["use_pytorch_cross_attention"]:
-		print("Activating efficient cross attentions.")
+		if accelerator.is_main_process:
+			print("Activating efficient cross attentions.")
 		torch.backends.cuda.enable_math_sdp(True)
 		torch.backends.cuda.enable_flash_sdp(True)
 		torch.backends.cuda.enable_mem_efficient_sdp(True)
@@ -221,24 +234,6 @@ def main():
 			gdf.loss_weight.bucket_ranges = torch.tensor(info["adaptive_loss"]["bucket_ranges"])
 			gdf.loss_weight.bucket_losses = torch.tensor(info["adaptive_loss"]["bucket_losses"])
 
-	main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
-
-	hf_accel_dtype = ""
-	if main_dtype is torch.bfloat16:
-		hf_accel_dtype = "bf16"
-	elif settings["dtype"] == "tf32":
-		hf_accel_dtype = "no"
-		torch.backends.cuda.matmul.allow_tf32 = True
-		torch.backends.cudnn.allow_tf32 = True
-	else:
-		hf_accel_dtype = "no"
-	
-	accelerator = Accelerator(
-		gradient_accumulation_steps=settings["grad_accum_steps"],
-		log_with="tensorboard",
-		project_dir=f"{settings['checkpoint_path']}"
-	)
-
 	# Model Loading For Latent Caching
 	# EfficientNet
 	print("Loading EfficientNetEncoder")
@@ -249,10 +244,11 @@ def main():
 	del effnet_checkpoint
 
 	# CLIP Encoders
-	print("Loading CLIP Text Encoder")
+	if accelerator.is_main_process:
+		print("Loading CLIP Text Encoder")
 	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).to(accelerator.device, dtype=main_dtype if not settings["train_text_encoder"] else torch.float32)
-	text_model.eval()
-	print("Loading CLIP Image Encoder")
+	if accelerator.is_main_process:
+		print("Loading CLIP Image Encoder")
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
 	image_model.eval()
 
@@ -431,9 +427,11 @@ def main():
 		if len(os.listdir(settings["latent_cache_location"])) == 0:
 			raise Exception("No latent caches to load. Please run latent caching first.")
 		
-		print("Loading media from the Latent Cache.")
+		if accelerator.is_main_process:
+			print("Loading media from the Latent Cache.")
 		for cache in os.listdir(settings["latent_cache_location"]):
-			latent_cache.add_cache_location(os.path.join(settings["latent_cache_location"], cache), False)
+			latent_path = os.path.join(settings["latent_cache_location"], cache)
+			latent_cache.add_cache_location(latent_path, False)
 
 	# Handle duplicates for Latent Caching
 	if settings["create_latent_cache"] or settings["use_latent_cache"]:
@@ -469,12 +467,14 @@ def main():
 		flash_attention = settings["flash_attention"]
 		generator_ema = None
 		if settings["model_version"] == "3.6B":
-			print("Creating and loading an instance of Stage C 3.6B.")
+			if accelerator.is_main_process:
+				print("Creating and loading an instance of Stage C 3.6B.")
 			generator = StageC(flash_attention=flash_attention)
 			if "ema_start_iters" in settings:
 				generator_ema = StageC(flash_attention=flash_attention)
 		elif settings["model_version"] == "1B":
-			print("Creating and loading an instance of Stage C 1B.")
+			if accelerator.is_main_process:
+				print("Creating and loading an instance of Stage C 1B.")
 			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
 			if "ema_start_iters" in settings:
 				generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
@@ -483,18 +483,18 @@ def main():
 
 	if "generator_checkpoint_path" in settings:
 		# generator.load_state_dict(load_or_fail(settings["generator_checkpoint_path"]))
-		generator = load_model(generator, model_id=None, full_path=settings["generator_checkpoint_path"], settings=settings)
+		generator = load_model(generator, model_id=None, full_path=settings["generator_checkpoint_path"], settings=settings, accelerator=accelerator)
 		# import optree
 		# optree.tree_map(lambda x: print(x.dtype), generator.state_dict())
 		# return
 	else:
-		generator = load_model(generator, model_id='generator', settings=settings)
+		generator = load_model(generator, model_id='generator', settings=settings, accelerator=accelerator)
 	enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
 	generator = generator.to(accelerator.device, dtype=main_dtype)
 
 	if generator_ema is not None:
 		generator_ema.load_state_dict(generator.state_dict())
-		generator_ema = load_model(generator_ema, "generator_ema", settings=settings)
+		generator_ema = load_model(generator_ema, "generator_ema", settings=settings, accelerator=accelerator)
 		generator_ema.to(accelerator.device, dtype=main_dtype)
 
 	# Load optimizers
