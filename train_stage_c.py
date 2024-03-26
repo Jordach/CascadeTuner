@@ -537,7 +537,7 @@ def main():
 	scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=settings["warmup_updates"])
 	scheduler.last_epoch = info["total_steps"] if "total_steps" in info else len(dataloader)
 
-	accelerator.prepare(generator, dataloader, text_model, image_model, optimizer, scheduler)
+	generator, dataloader, text_model, image_model, optimizer, scheduler = accelerator.prepare(generator, dataloader, text_model, image_model, optimizer, scheduler)
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
