@@ -236,7 +236,8 @@ def main():
 
 	# Model Loading For Latent Caching
 	# EfficientNet
-	print("Loading EfficientNetEncoder")
+	if accelerator.is_main_process:
+		print("Loading EfficientNetEncoder")
 	effnet = EfficientNetEncoder()
 	effnet_checkpoint = load_or_fail(settings["effnet_checkpoint_path"])
 	effnet.load_state_dict(effnet_checkpoint if "state_dict" not in effnet_checkpoint else effnet_checkpoint["state_dict"])
@@ -437,7 +438,7 @@ def main():
 	if settings["create_latent_cache"] or settings["use_latent_cache"]:
 		if settings["dropout"] > 0:
 			if len(latent_cache) > 100:
-				total_batches = int(len(latent_cache) * settings["dropout"])
+				total_batches = int((len(latent_cache)-1) * settings["dropout"])
 				# Handle multi-GPU proper
 				if accelerator.num_processes > 1:
 					total_batches = total_batches // accelerator.num_processes
@@ -446,9 +447,10 @@ def main():
 				for batch in dropouts:
 					latent_cache.add_cache_location(batch[0], True)
 
-				print(f"Original Cached Step Count: {len(latent_cache)}")
-				print(f"Duplicated {len(dropouts)} caches for caption dropout.")
-				print(f"Total Cached Step Count: {len(latent_cache)}")
+				if accelerator.is_main_process:
+					print(f"Original Cached Step Count: {len(latent_cache)}")
+					print(f"Duplicated {len(dropouts)} caches for caption dropout.")
+					print(f"Total Cached Step Count: {len(latent_cache)}")
 		
 		dataloader = DataLoader(
 			latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, pin_memory=False
@@ -498,7 +500,8 @@ def main():
 		generator_ema.to(accelerator.device, dtype=main_dtype)
 
 	# Load optimizers
-	print("Loading optimizer.")
+	if accelerator.is_main_process:
+		print("Loading optimizer.")
 	optimizer_type = settings["optimizer_type"].lower()
 	optimizer_kwargs = {}
 	if optimizer_type == "adamw":

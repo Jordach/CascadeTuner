@@ -171,8 +171,8 @@ class CachedLatents(Dataset):
 		if index == 0:
 			random.shuffle(self.cache_paths)
 
-		cache = torch.load(self.cache_paths[0])
-		if self.cache_paths[1]:
+		cache = torch.load(self.cache_paths[index][0])
+		if self.cache_paths[index][1]:
 			cache[0]["dropout"] = True
 
 		return cache
