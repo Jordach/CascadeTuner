@@ -604,7 +604,7 @@ def main():
 
 				# Forwards Pass
 				with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-					pred = generator(noised, noise_cond, 
+					pred = generator(noised.to(dtype=torch.bfloat16), noise_cond.to(dtype=torch.bfloat16), 
 						**{
 							"clip_text": text_embeddings.to(dtype=main_dtype),
 							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
