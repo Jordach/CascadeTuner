@@ -603,7 +603,7 @@ def main():
 					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=main_dtype), shift=1, loss_shift=1)
 
 				# Forwards Pass
-				with accelerator.autocast():
+				with torch.cuda.amp.autocast(dtype=torch.bfloat16):
 					pred = generator(noised, noise_cond, 
 						**{
 							"clip_text": text_embeddings.to(dtype=main_dtype),
@@ -613,8 +613,6 @@ def main():
 					)
 					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
 					loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
-					# And convert to fp32 
-					loss_adjusted = loss_adjusted.to(dtype=torch.float32)
 
 				if isinstance(gdf.loss_weight, AdaptiveLossWeight):
 					gdf.loss_weight.update_buckets(logSNR, loss)
