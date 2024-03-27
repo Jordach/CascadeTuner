@@ -17,7 +17,7 @@ from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseC
 from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock, enable_checkpointing_for_stable_cascade_blocks
 from dataset_util import BucketWalker, CachedLatents, RegularLatents
 from xformers_util import convert_state_dict_mha_to_normal_attn
-from optim_util import step_adafactor, Adafactor
+from optim_util import step_adafactor
 from bucketeer import Bucketeer
 from warmup_scheduler import GradualWarmupScheduler
 from fractions import Fraction
@@ -523,7 +523,7 @@ def main():
 		optimizer_kwargs["weight_decay"] = 0
 		optimizer_kwargs["beta1"] = None
 		
-		optimizer = Adafactor
+		optimizer = transformers.optimization.Adafactor
 
 	optimized_params = (
 		itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters()
@@ -531,8 +531,8 @@ def main():
 	optimizer = optimizer(optimized_params, lr=settings["lr"], **optimizer_kwargs)
 
 	# Special hook for stochastic rounding for adafactor
-	#if optimizer_type == "adafactorstoch":
-		#optimizer.step = step_adafactor
+	if optimizer_type == "adafactorstoch":
+		optimizer.step = step_adafactor
 
 	optimizer = accelerator.prepare(optimizer)
 
