@@ -530,12 +530,11 @@ def main():
 	)
 	optimizer = optimizer(optimized_params, lr=settings["lr"], **optimizer_kwargs)
 
-	optimizer = accelerator.prepare(optimizer)
-	
 	# Special hook for stochastic rounding for adafactor
 	if optimizer_type == "adafactorstoch":
-		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
+		optimizer.step = step_adafactor
 
+	optimizer = accelerator.prepare(optimizer)
 
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
 
