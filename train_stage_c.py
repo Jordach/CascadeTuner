@@ -540,6 +540,8 @@ def main():
 	scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=settings["warmup_updates"])
 	scheduler.last_epoch = len(dataloader)
 
+	scheduler = accelerator.prepare(scheduler)
+
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
 
@@ -611,6 +613,8 @@ def main():
 					)
 					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
 					loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
+					# And convert to fp32 
+					loss_adjusted = loss_adjusted.to(dtype=torch.float32)
 
 				if isinstance(gdf.loss_weight, AdaptiveLossWeight):
 					gdf.loss_weight.update_buckets(logSNR, loss)
@@ -639,7 +643,7 @@ def main():
 					logs = {
 						"loss": loss_adjusted.mean().item(),
 						#"grad_norm": last_grad_norm,
-						"lr": scheduler.get_last_lr()[0]
+						"lr": scheduler.get_last_lr()
 					}
 
 					epoch_bar.set_postfix(logs)
