@@ -622,8 +622,11 @@ def main():
 				# Backwards Pass
 				accelerator.backward(loss_adjusted)
 
-				if accelerator.sync_gradients or not accelerator.use_distributed == 1:
+				if not accelerator.use_distributed:
+					last_grad_norm = torch.nn.utils.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+				elif accelerator.sync_gradients:
 					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+				
 
 				optimizer.step()
 				scheduler.step()
@@ -643,7 +646,7 @@ def main():
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
-						"grad_norm": last_grad_norm,
+						"grad_norm": last_grad_norm[0],
 						"lr": scheduler.get_lr()[0]
 					}
 
