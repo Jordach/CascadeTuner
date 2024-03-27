@@ -540,7 +540,7 @@ def main():
 
 	# Load scheduler
 	scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=settings["warmup_updates"])
-	scheduler = accelerator.prepare(scheduler)
+	#scheduler = accelerator.prepare(scheduler)
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
