@@ -75,6 +75,9 @@ def step_adafactor(self, closure=None):
         closure (callable, optional): A closure that reevaluates the model
             and returns the loss.
     """
+
+    print("working")
+
     loss = None
     if closure is not None:
         loss = closure()

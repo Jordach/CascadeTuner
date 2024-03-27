@@ -534,13 +534,13 @@ def main():
 	if optimizer_type == "adafactorstoch":
 		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
 
-	# optimizer = accelerator.prepare(optimizer)
+	optimizer = accelerator.prepare(optimizer)
 
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
 
 	# Load scheduler
 	scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=settings["warmup_updates"])
-	#scheduler = accelerator.prepare(scheduler)
+	scheduler = accelerator.prepare(scheduler)
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
