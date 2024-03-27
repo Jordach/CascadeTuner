@@ -537,9 +537,7 @@ def main():
 	generator, dataloader, text_model, optimizer = accelerator.prepare(generator, dataloader, text_model, optimizer)
 
 	# Load scheduler
-	scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=settings["warmup_updates"])
-	scheduler.last_epoch = len(dataloader)
-
+	scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=settings["warmup_updates"])
 	scheduler = accelerator.prepare(scheduler)
 
 	if accelerator.is_main_process:
