@@ -534,7 +534,7 @@ def main():
 	if optimizer_type == "adafactorstoch":
 		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
 
-	generator, dataloader, text_model, image_model, optimizer = accelerator.prepare(generator, dataloader, text_model, image_model, optimizer)
+	generator, dataloader, text_model, optimizer = accelerator.prepare(generator, dataloader, text_model, optimizer)
 
 	# Load scheduler
 	scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=settings["warmup_updates"])
@@ -622,8 +622,9 @@ def main():
 				# Backwards Pass
 				accelerator.backward(loss_adjusted)
 
-				if accelerator.sync_gradients:
-					accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+				if accelerator.sync_gradients or not accelerator.use_distributed == 1:
+					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+
 				optimizer.step()
 				scheduler.step()
 				optimizer.zero_grad()
@@ -642,7 +643,7 @@ def main():
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
-						#"grad_norm": last_grad_norm,
+						"grad_norm": last_grad_norm,
 						"lr": scheduler.get_lr()[0]
 					}
 
