@@ -196,7 +196,7 @@ def main():
 		torch.backends.cudnn.allow_tf32 = True
 	
 	scaler_kwargs = GradScalerKwargs({"enabled":False})
-	
+	print(scaler_kwargs)
 	accelerator = Accelerator(
 		gradient_accumulation_steps=settings["grad_accum_steps"],
 		log_with="tensorboard",
