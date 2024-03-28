@@ -535,13 +535,13 @@ def main():
 
 	# Special hook for stochastic rounding for adafactor
 	if optimizer_type == "adafactorstoch":
-		optimizer.step = step_adafactor.__get__(optimizer)
+		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
 
 	# Load scheduler
-	scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=settings["warmup_updates"])
+	lr_scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=settings["warmup_updates"])
 	
 	# Prepare objects
-	generator, dataloader, text_model, optimizer, scheduler = accelerator.prepare(generator, dataloader, text_model, optimizer, scheduler)
+	generator, dataloader, text_model, optimizer, lr_scheduler = accelerator.prepare(generator, dataloader, text_model, optimizer, lr_scheduler)
 
 	print(accelerator.scaler_handler)
 
@@ -626,9 +626,8 @@ def main():
 				if accelerator.sync_gradients or not accelerator.use_distributed:
 					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				
-
 				optimizer.step()
-				scheduler.step()
+				lr_scheduler.step()
 				optimizer.zero_grad()
 
 				steps_bar.update(1)
