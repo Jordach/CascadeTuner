@@ -530,9 +530,7 @@ def main():
 		
 		optimizer_opt = transformers.optimization.Adafactor
 
-	optimized_params = (
-		itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters()
-	)
+	optimized_params = itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters()
 	optimizer = optimizer_opt(optimized_params, lr=settings["lr"], **optimizer_kwargs)
 
 	# Special hook for stochastic rounding for adafactor
