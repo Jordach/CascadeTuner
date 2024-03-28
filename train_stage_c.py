@@ -647,7 +647,7 @@ def main():
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
-						"grad_norm": last_grad_norm[0],
+						"grad_norm": last_grad_norm.item(),
 						"lr": scheduler.get_last_lr()
 					}
 
