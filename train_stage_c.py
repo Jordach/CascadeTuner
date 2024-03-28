@@ -520,8 +520,8 @@ def main():
 		optimizer_opt = bnb.optim.AdamW8bit
 	else: #AdaFactor
 		optimizer_kwargs["scale_parameter"] = False
-		optimizer_kwargs["relative_step"] = False
-		optimizer_kwargs["warmup_init"] = False
+		optimizer_kwargs["relative_step"] = True
+		optimizer_kwargs["warmup_init"] = True
 		optimizer_kwargs["eps"] = [1e-30, 1e-3]
 		optimizer_kwargs["clip_threshold"] = 1.0
 		optimizer_kwargs["decay_rate"] = -0.8
