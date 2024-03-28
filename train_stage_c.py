@@ -538,14 +538,12 @@ def main():
 		_optimizer.step = step_adafactor.__get__(_optimizer, transformers.optimization.Adafactor)
 
 	# Load scheduler
-	lr_scheduler = transformers.get_constant_schedule_with_warmup(_optimizer, num_warmup_steps=settings["warmup_updates"])
+	#lr_scheduler = transformers.get_constant_schedule_with_warmup(_optimizer, num_warmup_steps=settings["warmup_updates"])
 	
 	# Prepare objects
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
 	_optimizer = accelerator.prepare_optimizer(_optimizer)
-	lr_scheduler = accelerator.prepare_scheduler(lr_scheduler)
-
-	print(accelerator.scaler_handler)
+	#lr_scheduler = accelerator.prepare_scheduler(lr_scheduler)
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
@@ -629,7 +627,7 @@ def main():
 					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				
 				_optimizer.step()
-				lr_scheduler.step()
+				#lr_scheduler.step()
 				_optimizer.zero_grad()
 
 				steps_bar.update(1)
