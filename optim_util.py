@@ -76,8 +76,6 @@ def step_adafactor(self, closure=None):
             and returns the loss.
     """
 
-    print("working")
-
     loss = None
     if closure is not None:
         loss = closure()
