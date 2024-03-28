@@ -204,6 +204,8 @@ def main():
 		project_dir=f"{settings['checkpoint_path']}",
 	)
 
+	print(accelerator.scaler_handler)
+
 	# Ensure text encoder and unet paths exist
 	if accelerator.is_main_process:
 		unet_path = f"{settings['checkpoint_path']}/unet/"
