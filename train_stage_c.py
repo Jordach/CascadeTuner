@@ -195,11 +195,12 @@ def main():
 		torch.backends.cuda.matmul.allow_tf32 = True
 		torch.backends.cudnn.allow_tf32 = True
 	
-	accelerator_kwargs = GradScalerKwargs(enabled=False)
+	scaler_kwargs = GradScalerKwargs(enabled=False)
 	accelerator = Accelerator(
 		gradient_accumulation_steps=settings["grad_accum_steps"],
 		log_with="tensorboard",
-		project_dir=f"{settings['checkpoint_path']}"
+		project_dir=f"{settings['checkpoint_path']}",
+		kwargs_handlers=[scaler_kwargs]
 	)
 
 	# Ensure text encoder and unet paths exist
