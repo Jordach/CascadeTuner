@@ -535,7 +535,7 @@ def main():
 
 	# Special hook for stochastic rounding for adafactor
 	if optimizer_type == "adafactorstoch":
-		optimizer.step = step_adafactor
+		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
 
 	# Load scheduler
 	scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=settings["warmup_updates"])
