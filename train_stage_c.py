@@ -521,7 +521,7 @@ def main():
 	else: #AdaFactor
 		optimizer_kwargs["scale_parameter"] = False
 		optimizer_kwargs["relative_step"] = False
-		optimizer_kwargs["warmup_init"] = True
+		optimizer_kwargs["warmup_init"] = False
 		optimizer_kwargs["eps"] = [1e-30, 1e-3]
 		optimizer_kwargs["clip_threshold"] = 1.0
 		optimizer_kwargs["decay_rate"] = -0.8
@@ -531,7 +531,7 @@ def main():
 		optimizer_opt = transformers.optimization.Adafactor
 
 	optimized_params = itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters()
-	optimizer = optimizer_opt(optimized_params, lr=settings["lr"], **optimizer_kwargs)
+	optimizer = optimizer_opt(optimized_params, lr=float(settings["lr"]), **optimizer_kwargs)
 
 	# Special hook for stochastic rounding for adafactor
 	if optimizer_type == "adafactorstoch":
