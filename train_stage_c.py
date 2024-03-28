@@ -645,7 +645,7 @@ def main():
 					logs = {
 						"loss": loss_adjusted.mean().item(),
 						"grad_norm": last_grad_norm.item(),
-						"lr": scheduler.get_last_lr()
+						"lr": lr_scheduler.get_last_lr()
 					}
 
 					epoch_bar.set_postfix(logs)
