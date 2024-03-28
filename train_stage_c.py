@@ -545,6 +545,8 @@ def main():
 	# Prepare objects
 	generator, dataloader, text_model, optimizer, scheduler = accelerator.prepare(generator, dataloader, text_model, optimizer, scheduler)
 
+	print(accelerator.scaler_handler)
+
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
 
