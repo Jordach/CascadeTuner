@@ -542,8 +542,8 @@ def main():
 	
 	# Prepare objects
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
-	_optimizer = accelerator.prepare_optimizer(_optimizer)
-	lr_scheduler = accelerator.prepare_scheduler(lr_scheduler)
+	#_optimizer = accelerator.prepare_optimizer(_optimizer)
+	#lr_scheduler = accelerator.prepare_scheduler(lr_scheduler)
 
 	print(accelerator.scaler_handler)
 
