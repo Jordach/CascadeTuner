@@ -541,7 +541,9 @@ def main():
 	lr_scheduler = transformers.get_constant_schedule_with_warmup(_optimizer, num_warmup_steps=settings["warmup_updates"])
 	
 	# Prepare objects
-	generator, dataloader, text_model, _optimizer, lr_scheduler = accelerator.prepare(generator, dataloader, text_model, _optimizer, lr_scheduler)
+	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
+	_optimizer = accelerator.prepare_optimizer(_optimizer)
+	lr_scheduler = accelerator.prepare_scheduler(lr_scheduler)
 
 	print(accelerator.scaler_handler)
 
