@@ -511,13 +511,13 @@ def main():
 	optimizer_type = settings["optimizer_type"].lower()
 	optimizer_kwargs = {}
 	if optimizer_type == "adamw":
-		optimizer = optim.AdamW
+		optimizer_opt = optim.AdamW
 	elif optimizer_type == "adamw8bit":
 		try:
 			import bitsandbytes as bnb
 		except ImportError:
 			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
-		optimizer = bnb.optim.AdamW8bit
+		optimizer_opt = bnb.optim.AdamW8bit
 	else: #AdaFactor
 		optimizer_kwargs["scale_parameter"] = False
 		optimizer_kwargs["relative_step"] = False
@@ -528,12 +528,12 @@ def main():
 		optimizer_kwargs["weight_decay"] = 0
 		optimizer_kwargs["beta1"] = None
 		
-		optimizer = transformers.optimization.Adafactor
+		optimizer_opt = transformers.optimization.Adafactor
 
 	optimized_params = (
 		itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters()
 	)
-	optimizer = optimizer(optimized_params, lr=settings["lr"], **optimizer_kwargs)
+	optimizer = optimizer_opt(optimized_params, lr=settings["lr"], **optimizer_kwargs)
 
 	# Special hook for stochastic rounding for adafactor
 	if optimizer_type == "adafactorstoch":
