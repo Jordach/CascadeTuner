@@ -195,7 +195,8 @@ def main():
 		torch.backends.cuda.matmul.allow_tf32 = True
 		torch.backends.cudnn.allow_tf32 = True
 	
-	scaler_kwargs = GradScalerKwargs(enabled=False)
+	scaler_kwargs = GradScalerKwargs()
+	scaler_kwargs.enabled = False
 	accelerator = Accelerator(
 		gradient_accumulation_steps=settings["grad_accum_steps"],
 		log_with="tensorboard",
