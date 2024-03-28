@@ -195,7 +195,7 @@ def main():
 		torch.backends.cuda.matmul.allow_tf32 = True
 		torch.backends.cudnn.allow_tf32 = True
 	
-	scaler_kwargs = GradScalerKwargs(growth_factor=1, init_scale=1)
+	scaler_kwargs = GradScalerKwargs(growth_factor=1, init_scale=1, enabled=False)
 	print(scaler_kwargs)
 	accelerator = Accelerator(
 		kwargs_handlers=[scaler_kwargs],
