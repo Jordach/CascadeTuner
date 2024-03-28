@@ -27,7 +27,7 @@ from torchtools.transforms import SmartCrop
 
 from torch.utils.data import DataLoader
 from accelerate import init_empty_weights, Accelerator
-from accelerate.utils import set_module_tensor_to_device, set_seed
+from accelerate.utils import set_module_tensor_to_device, set_seed, GradScalerKwargs
 from contextlib import contextmanager, nullcontext
 from tqdm import tqdm
 import yaml
@@ -195,6 +195,7 @@ def main():
 		torch.backends.cuda.matmul.allow_tf32 = True
 		torch.backends.cudnn.allow_tf32 = True
 	
+	accelerator_kwargs = GradScalerKwargs(enabled=False)
 	accelerator = Accelerator(
 		gradient_accumulation_steps=settings["grad_accum_steps"],
 		log_with="tensorboard",
@@ -603,8 +604,8 @@ def main():
 					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=main_dtype), shift=1, loss_shift=1)
 
 				# Forwards Pass
-				with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-					pred = generator(noised.to(dtype=torch.bfloat16), noise_cond.to(dtype=torch.bfloat16), 
+				with accelerator.autocast():
+					pred = generator(noised, noise_cond, 
 						**{
 							"clip_text": text_embeddings.to(dtype=main_dtype),
 							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
@@ -645,7 +646,7 @@ def main():
 					logs = {
 						"loss": loss_adjusted.mean().item(),
 						"grad_norm": last_grad_norm[0] if accelerator.use_distributed else last_grad_norm.mean().item(),
-						"lr": scheduler.get_last_lr()[0] 
+						"lr": scheduler.get_last_lr()
 					}
 
 					epoch_bar.set_postfix(logs)
