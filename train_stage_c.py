@@ -198,10 +198,10 @@ def main():
 	scaler_kwargs = GradScalerKwargs(enabled=False)
 	print(scaler_kwargs)
 	accelerator = Accelerator(
+		kwargs_handlers=[scaler_kwargs],
 		gradient_accumulation_steps=settings["grad_accum_steps"],
 		log_with="tensorboard",
 		project_dir=f"{settings['checkpoint_path']}",
-		kwargs_handlers=[scaler_kwargs]
 	)
 
 	# Ensure text encoder and unet paths exist
@@ -215,7 +215,7 @@ def main():
 
 	if settings["use_pytorch_cross_attention"]:
 		if accelerator.is_main_process:
-			print("Activating efficient cross attentions.")
+			print("Using Pytorch Flash Attention V2.")
 		torch.backends.cuda.enable_math_sdp(True)
 		torch.backends.cuda.enable_flash_sdp(True)
 		torch.backends.cuda.enable_mem_efficient_sdp(True)
