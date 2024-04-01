@@ -682,7 +682,7 @@ def main():
 					}
 
 					if settings["train_text_encoder"]:
-						logs["text_lr"] = text_scheduler.get_last_lr()[0]
+						logs["te_lr"] = text_scheduler.get_last_lr()[0]
 
 					epoch_bar.set_postfix(logs)
 					accelerator.log(logs, step=total_steps)
