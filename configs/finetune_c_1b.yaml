@@ -24,6 +24,7 @@ dtype: bfloat16
 
 # The learning rate.
 lr: 5.0e-6
+text_lr: 5.0e-6
 
 # Loss floor
 # This adds an additional amount of loss per each backwards pass.
@@ -51,6 +52,7 @@ save_every: 5000
 
 # How many steps should the learning rate warm up by?
 warmup_updates: 1
+text_warmup_updates: 1
 
 # Set a seed number of your choosing
 seed: 69
@@ -65,10 +67,12 @@ max_token_limit: 900
 # Whether to use xformers over pytorch's flash attention
 flash_attention: true
 
-# Which optimiser you prefer using.
+# Which optimiser you prefer using for Stage C/B.
 # Recommended for bf16 training: AdafactorStoch
 # Options: AdamW, AdamW8bit, Adafactor, AdafactorStoch
 optimizer_type: AdafactorStoch
+# The optimizer for the Text Encoder Training (Useless when not training CLIP Text):
+text_optimizer_type: AdamW8bit
 
 # All three options must be present to use EMA weights
 # ema_start_iters: 5000

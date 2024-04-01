@@ -48,8 +48,29 @@ info = {
 	#"adaptive_loss": {}
 }
 
-def get_conditions(batch, models, extras):
-	pass
+def get_optimizer(optim_choice, settings):
+	optimizer_type = optim_choice.lower()
+	optimizer_kwargs = {}
+	if optimizer_type == "adamw":
+		optimizer = optim.AdamW
+	elif optimizer_type == "adamw8bit":
+		try:
+			import bitsandbytes as bnb
+		except ImportError:
+			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
+		optimizer = bnb.optim.AdamW8bit
+	else: #AdaFactor
+		optimizer_kwargs["scale_parameter"] = False
+		optimizer_kwargs["relative_step"] = False
+		optimizer_kwargs["warmup_init"] = False
+		optimizer_kwargs["eps"] = [1e-30, 1e-3]
+		optimizer_kwargs["clip_threshold"] = 1.0
+		optimizer_kwargs["decay_rate"] = -0.8
+		optimizer_kwargs["weight_decay"] = 0
+		optimizer_kwargs["beta1"] = None
+		
+		optimizer = transformers.optimization.Adafactor
+	return optimizer, optimizer_kwargs
 
 def load_model(model, model_id=None, full_path=None, strict=True, settings=None, accelerator=None):
 	if model_id is not None and full_path is None:
@@ -189,6 +210,16 @@ def main():
 
 	if settings["train_text_encoder"] and settings["cache_text_encoder"]:
 		raise ValueError("train_text_encoder and cache_text_encoder cannot both be enabled")
+
+	# Copy unet training settings if the supplied config lacks them
+	if "text_lr" not in settings:
+		settings["text_lr"] = settings["lr"]
+	
+	if "text_optimizer_type" not in settings:
+		settings["text_optimizer_type"] = settings["optimizer_type"]
+
+	if "text_warmup_steps" not in settings:
+		settings["text_warmup_steps"] = settings["warmup_updates"]
 
 	main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
 	if settings["dtype"] == "tf32":
@@ -500,47 +531,45 @@ def main():
 		generator_ema = load_model(generator_ema, "generator_ema", settings=settings, accelerator=accelerator)
 		generator_ema.to(accelerator.device, dtype=main_dtype)
 
-	# Load optimizers
-	if accelerator.is_main_process:
-		print("Loading optimizer.")
-	optimizer_type = settings["optimizer_type"].lower()
-	optimizer_kwargs = {}
-	if optimizer_type == "adamw":
-		optimizer = optim.AdamW
-	elif optimizer_type == "adamw8bit":
-		try:
-			import bitsandbytes as bnb
-		except ImportError:
-			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
-		optimizer = bnb.optim.AdamW8bit
-	else: #AdaFactor
-		optimizer_kwargs["scale_parameter"] = False
-		optimizer_kwargs["relative_step"] = False
-		optimizer_kwargs["warmup_init"] = False
-		optimizer_kwargs["eps"] = [1e-30, 1e-3]
-		optimizer_kwargs["clip_threshold"] = 1.0
-		optimizer_kwargs["decay_rate"] = -0.8
-		optimizer_kwargs["weight_decay"] = 0
-		optimizer_kwargs["beta1"] = None
-		
-		optimizer = transformers.optimization.Adafactor
-
-	optimized_params = (
-		itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters()
-	)
-	optimizer = optimizer(optimized_params, lr=settings["lr"], **optimizer_kwargs)
-
-	# Special hook for stochastic rounding for adafactor
-	if optimizer_type == "adafactorstoch":
-		optimizer.step = step_adafactor.__get__(optimizer, transformers.optimization.Adafactor)
-
-	# optimizer = accelerator.prepare(optimizer)
-
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
 
-	# Load scheduler
-	scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=settings["warmup_updates"])
-	#scheduler = accelerator.prepare(scheduler)
+	# Load optimizers and LR schedules
+	if accelerator.is_main_process:
+		print("Loading optimizer[s].")
+
+	# Unet/Stage C optimizer and schedule
+	unet_optimizer, unet_optimizer_kwargs = get_optimizer(settings["optimizer_type"], settings)
+
+	unet_params = (
+		generator.parameters()
+	)
+	unet_optimizer = unet_optimizer(unet_params, lr=settings["lr"], **unet_optimizer_kwargs)
+
+	# Special hook for stochastic rounding for adafactor
+	if settings["optimizer_type"].lower() == "adafactorstoch":
+		unet_optimizer.step = step_adafactor.__get__(unet_optimizer, transformers.optimization.Adafactor)
+	# unet_optimizer = accelerator.prepare(unet_optimizer)
+
+	unet_scheduler = transformers.get_constant_schedule_with_warmup(unet_optimizer, num_warmup_steps=settings["warmup_updates"])
+	# unet_scheduler = accelerator.prepare(unet_scheduler)
+
+	# Text Encoder optimizer and LR schedule
+	# Make dummy variables to keep them always available
+	text_optimizer = ""
+	text_params = ""
+	text_scheduler = ""
+	if settings["train_text_encoder"]:
+		text_optimizer, text_optimizer_kwargs = get_optimizer(settings["text_optimizer_type"], settings)
+
+		text_params = (
+			text_model.parameters()
+		)
+
+		text_optimizer = text_optimizer(text_params, lr=settings["text_lr"], **text_optimizer_kwargs)
+		# text_optimizer = accelerator.prepare(text_optimizer)
+
+		text_scheduler = transformers.get_constant_schedule_with_warmup(text_optimizer, num_warmup_steps=settings["text_warmup_updates"])
+		# text_scheduler = accelerator.prepare(text_scheduler)
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
@@ -625,10 +654,14 @@ def main():
 				if accelerator.sync_gradients or not accelerator.use_distributed:
 					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				
+				unet_optimizer.step()
+				unet_scheduler.step()
+				unet_optimizer.zero_grad()
 
-				optimizer.step()
-				scheduler.step()
-				optimizer.zero_grad()
+				if settings["train_text_encoder"]:
+					text_optimizer.step()
+					text_scheduler.step()
+					text_optimizer.zero_grad()
 
 				steps_bar.update(1)
 				current_step += 1
@@ -645,8 +678,11 @@ def main():
 					logs = {
 						"loss": loss_adjusted.mean().item(),
 						"grad_norm": last_grad_norm[0],
-						"lr": scheduler.get_last_lr()[0] 
+						"lr": unet_scheduler.get_last_lr()[0]
 					}
+
+					if settings["train_text_encoder"]:
+						logs["text_lr"] = text_scheduler.get_last_lr()[0]
 
 					epoch_bar.set_postfix(logs)
 					accelerator.log(logs, step=total_steps)
