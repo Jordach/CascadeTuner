@@ -39,6 +39,7 @@ import numpy as np
 import argparse
 parser = argparse.ArgumentParser(description="Simpler example of a Cascade training script.")
 parser.add_argument("--yaml", default=None, type=str, help="The training configuration YAML")
+parser.add_argument("--cache_only", default=False, action="store_true", help="Whether to quit after latent caching.")
 args = parser.parse_args()
 
 models = {}
@@ -450,6 +451,8 @@ def main():
 			torch.save(batch, os.path.join(settings["latent_cache_location"], file_name))
 			latent_cache.add_cache_location(os.path.join(settings["latent_cache_location"], file_name), False)
 			step += 1
+		if args.cache_only:
+			return 0
 	
 	elif settings["use_latent_cache"]:
 		# Load all latent caches from disk. Note that batch size is ignored here and can theoretically be mixed.
