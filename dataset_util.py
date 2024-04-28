@@ -88,9 +88,11 @@ class BucketWalker():
 											self.buckets[trimmed_aspect] = []
 										self.buckets[trimmed_aspect].append(file_dict)
 								else:
-									raise ValueError(f"No text file found: {txt_file}")
+									tqdm.write(f"No text file found for: {txt_file}; skipping.")
+									self.reject_count += 1
 						except UnidentifiedImageError as e:
 							tqdm.write(f"Cannot load {current}, file may be broken or corrupt.")
+							self.reject_count += 1
 						except Image.DecompressionBombWarning as e:
 							tqdm.write(f"Cannot load {current}, file is too large.")
 							self.reject_count += 1
