@@ -286,7 +286,7 @@ def main():
 	# Turn on text encoder training if used
 	text_model.requires_grad_(True)
 	text_model.train()
-	text_model.gradient_checkpointing_enable()
+	#text_model.gradient_checkpointing_enable()
 
 	pre_dataset = []
 
