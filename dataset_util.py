@@ -97,7 +97,7 @@ class BucketWalker():
 							tqdm.write(f"Cannot load {current}, file is too large.")
 							self.reject_count += 1
 						except ValueError as e:
-							tqdm.write(e)
+							tqdm.write("Cannot load {current}, file is either too large or a ValueError occurred.")
 							self.reject_count += 1
 						except KeyboardInterrupt:
 							self.interrupted = True
