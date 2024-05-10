@@ -345,17 +345,23 @@ def main():
 			padding="max_length",
 			max_length=len_input,
 			return_tensors="pt",
-		).to(accelerator.device)
-		batch_tokens = tokens["input_ids"].to(accelerator.device)
-		batch_att_mask = tokens["attention_mask"].to(accelerator.device)
+		).to("cpu")
+		b_tokens = tokens["input_ids"]
+		b_att_mask = tokens["attention_mask"]
 
 		max_standard_tokens = tokenizer.model_max_length - 2
-		true_len = max(len(x) for x in batch_tokens)
+		true_len = max(len(x) for x in b_tokens)
 		n_chunks = np.ceil(true_len / max_standard_tokens).astype(int)
 		max_len = n_chunks.item() * max_standard_tokens
 
-		cropped_tokens = [batch_tokens[:, i:i + max_standard_tokens] for i in range(0, max_len, max_standard_tokens)]
-		cropped_attn = [batch_att_mask[:, i:i + max_standard_tokens] for i in range(0, max_len, max_standard_tokens)]
+		# Properly manage memory here - don't bother loading tokens onto GPU.
+		# Should prevent an OOM scenario on the GPU.
+		cropped_tokens = [b_tokens[:, i:i + max_standard_tokens].clone().detach() for i in range(0, max_len, max_standard_tokens)]
+		cropped_attn = [b_att_mask[:, i:i + max_standard_tokens].clone().detach() for i in range(0, max_len, max_standard_tokens)]
+
+		del tokens
+		del b_tokens
+		del b_att_mask
 		
 		return {"images": images, "tokens": cropped_tokens, "att_mask": cropped_attn, "caption": caption, "aspects": aspects, "dropout": False}
 
@@ -368,7 +374,7 @@ def main():
 
 	# Skip initial dataloading pass if we're using a latent cache
 	if not settings["use_latent_cache"]:
-		for batch in pre_dataloader:
+		for batch in tqdm(pre_dataloader, desc="Dataloader Warmup"):
 			dataset.append(batch)
 
 	auto_bucketer = Bucketeer(
