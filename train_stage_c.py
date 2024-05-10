@@ -356,8 +356,8 @@ def main():
 
 		# Properly manage memory here - don't bother loading tokens onto GPU.
 		# Should prevent an OOM scenario on the GPU.
-		cropped_tokens = [b_tokens[:, i:i + max_standard_tokens].clone().detach() for i in range(0, max_len, max_standard_tokens)]
-		cropped_attn = [b_att_mask[:, i:i + max_standard_tokens].clone().detach() for i in range(0, max_len, max_standard_tokens)]
+		cropped_tokens = [b_tokens[:, i:i + max_standard_tokens].clone().detach().to("cpu") for i in range(0, max_len, max_standard_tokens)]
+		cropped_attn = [b_att_mask[:, i:i + max_standard_tokens].clone().detach().to("cpu") for i in range(0, max_len, max_standard_tokens)]
 
 		del tokens
 		del b_tokens
