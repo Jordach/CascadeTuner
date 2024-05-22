@@ -230,7 +230,7 @@ def main():
 		torch.backends.cudnn.allow_tf32 = True
 	
 	accelerator = Accelerator(
-		gradient_accumulation_steps=settings["grad_accum_steps"],
+		gradient_accumulation_steps=int(settings["grad_accum_steps"]),
 		log_with="tensorboard",
 		project_dir=f"{settings['checkpoint_path']}"
 	)
