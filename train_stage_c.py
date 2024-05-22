@@ -589,7 +589,6 @@ def main():
 		)
 
 	# Prepare everything at the same time
-	generator.train()
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
 	if settings["accelerate_test"]:
 		unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
@@ -620,6 +619,7 @@ def main():
 	text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
 	last_grad_norm = 0
 	with accelerator.accumulate(generator) if not settings["train_text_encoder"] else accelerator.accumulate(generator, text_model):
+		generator.train()
 		for e in epoch_bar:
 			current_step = 0
 			steps_bar.reset(total=len(dataloader))
