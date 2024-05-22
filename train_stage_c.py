@@ -168,7 +168,6 @@ def main():
 	settings["adaptive_loss_weight"] = False
 	settings["loss_floor"] = 0
 	settings["train_text_encoder"] = False
-	settings["accelerate_test"] = False
 	settings["lr_scheduler"] = "constant_with_warmup"
 	settings["text_lr_scheduler"] = "constant_with_warmup"
 	settings["grad_accum_steps"] = 1
@@ -563,7 +562,6 @@ def main():
 	if settings["optimizer_type"].lower() == "adafactorstoch":
 		unet_optimizer.step = step_adafactor.__get__(unet_optimizer, transformers.optimization.Adafactor)
 
-	# if settings["accelerate_test"]:
 	unet_scheduler = get_scheduler(
 		settings["lr_scheduler"],
 		optimizer=unet_optimizer,
@@ -594,10 +592,9 @@ def main():
 
 	# Prepare everything at the same time
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
-	if settings["accelerate_test"]:
-		unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
-		if settings["train_text_encoder"]:
-			text_optimizer, text_scheduler = accelerator.prepare(text_optimizer, text_scheduler)
+	unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
+	if settings["train_text_encoder"]:
+		text_optimizer, text_scheduler = accelerator.prepare(text_optimizer, text_scheduler)
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
