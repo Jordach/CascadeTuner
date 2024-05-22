@@ -646,7 +646,7 @@ def main():
 				dropout = batch[0]["dropout"]
 				batch_size = len(batch[0]["captions"])
 				
-				with text_encoder_context:
+				with nullcontext():
 					text_embeddings = None
 					text_embeddings_pool = None
 					if is_latent_cache:
@@ -658,7 +658,7 @@ def main():
 					else:
 						text_embeddings, text_embeddings_pool = text_cache(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
 					
-				with torch.no_grad():
+				with nullcontext():
 					# Handle Image Encoding
 					image_embeddings = torch.zeros(batch_size, 768, device=accelerator.device, dtype=main_dtype)
 					if not dropout:
