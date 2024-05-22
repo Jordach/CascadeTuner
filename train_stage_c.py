@@ -674,7 +674,7 @@ def main():
 				# Backwards Pass
 				accelerator.backward(loss_adjusted)
 
-				if accelerator.sync_gradients or not accelerator.use_distributed:
+				if accelerator.sync_gradients:
 					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
 				
 				unet_optimizer.step()
