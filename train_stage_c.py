@@ -25,7 +25,6 @@ from torchtools.transforms import SmartCrop
 
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
-from accelerate.utils import set_seed, GradientAccumulationPlugin
 from contextlib import contextmanager, nullcontext
 from tqdm import tqdm
 import yaml
@@ -228,13 +227,8 @@ def main():
 		torch.backends.cuda.matmul.allow_tf32 = True
 		torch.backends.cudnn.allow_tf32 = True
 	
-	gacc_plugin = GradientAccumulationPlugin(
-		num_steps=int(settings["grad_accum_steps"]),
-		adjust_scheduler=True,
-		sync_with_dataloader=True
-	)
 	accelerator = Accelerator(
-		gradient_accumulation_plugin=gacc_plugin,
+		gradient_accumulation_steps=settings["grad_accum_settings"],
 		log_with="tensorboard",
 		project_dir=f"{settings['checkpoint_path']}"
 	)
@@ -550,6 +544,10 @@ def main():
 	if accelerator.is_main_process:
 		print("Loading optimizer[s].")
 
+	# Divide up the dataset cache onto the other GPUs
+	accelerator.wait_for_everyone()
+	dataloader = accelerator.prepare(dataloader)
+
 	# Unet/Stage C optimizer and schedule
 	unet_optimizer, unet_optimizer_kwargs = get_optimizer(settings["optimizer_type"], settings)
 
@@ -566,7 +564,7 @@ def main():
 		settings["lr_scheduler"],
 		optimizer=unet_optimizer,
 		num_warmup_steps=settings["warmup_updates"],
-		num_training_steps=len(dataloader)
+		num_training_steps=len(dataloader) * settings["num_epochs"]
 	)
 
 	# Text Encoder optimizer and LR schedule
@@ -586,12 +584,12 @@ def main():
 		text_scheduler = get_scheduler(
 			settings["text_lr_scheduler"],
 			optimizer=text_optimizer,
-			num_warmup_steps=settings["warmup_updates"],
-			num_training_steps=len(dataloader)
+			num_warmup_steps=settings["warmup_updates"] * settings["grad_accum_steps"],
+			num_training_steps=len(dataloader) * settings["num_epochs"]
 		)
 
 	# Prepare everything at the same time
-	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
+	generator, text_model = accelerator.prepare(generator, text_model)
 	unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
 	if settings["train_text_encoder"]:
 		text_optimizer, text_scheduler = accelerator.prepare(text_optimizer, text_scheduler)
