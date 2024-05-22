@@ -627,13 +627,13 @@ def main():
 		current_step = 0
 		steps_bar.reset(total=len(dataloader))
 		for step, batch in enumerate(dataloader):
-			with accelerator.accumulate(generator) if not settings["train_text_encoder"] else accelerator.accumulate(generator, text_model):
-				captions = batch[0]["tokens"]
-				attn_mask = batch[0]["att_mask"]
-				images = batch[0]["images"] if not is_latent_cache else None
-				dropout = batch[0]["dropout"]
-				batch_size = len(batch[0]["captions"])
-				
+			captions = batch[0]["tokens"]
+			attn_mask = batch[0]["att_mask"]
+			images = batch[0]["images"] if not is_latent_cache else None
+			dropout = batch[0]["dropout"]
+			batch_size = len(batch[0]["captions"])
+
+			with accelerator.accumulate(generator, text_model) if settings["train_text_encoder"] else accelerator.accumulate(generator):
 				with text_encoder_context:
 					text_embeddings = None
 					text_embeddings_pool = None
