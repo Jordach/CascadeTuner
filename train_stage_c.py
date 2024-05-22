@@ -675,7 +675,8 @@ def main():
 				accelerator.backward(loss_adjusted)
 
 				if accelerator.sync_gradients:
-					last_grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+					grad_norm = accelerator.clip_grad_norm_(itertools.chain(generator.parameters(), text_model.parameters()) if settings["train_text_encoder"] else generator.parameters(), 1.0)
+					last_grad_norm = grad_norm.mean().item()
 				
 				unet_optimizer.step()
 				unet_scheduler.step()
@@ -700,7 +701,7 @@ def main():
 				if accelerator.is_main_process:
 					logs = {
 						"loss": loss_adjusted.mean().item(),
-						"grad_norm": last_grad_norm.mean().item(),
+						"grad_norm": last_grad_norm,
 						"lr": unet_scheduler.get_last_lr()[0]
 					}
 
