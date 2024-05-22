@@ -18,7 +18,6 @@ from dataset_util import BucketWalker, CachedLatents, RegularLatents
 from xformers_util import convert_state_dict_mha_to_normal_attn
 from optim_util import step_adafactor
 from bucketeer import Bucketeer
-from fractions import Fraction
 from torch.utils.checkpoint import checkpoint
 from diffusers.optimization import get_scheduler
 
@@ -26,7 +25,7 @@ from torchtools.transforms import SmartCrop
 
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
-from accelerate.utils import set_seed
+from accelerate.utils import set_seed, GradientAccumulationPlugin
 from contextlib import contextmanager, nullcontext
 from tqdm import tqdm
 import yaml
@@ -230,8 +229,13 @@ def main():
 		torch.backends.cuda.matmul.allow_tf32 = True
 		torch.backends.cudnn.allow_tf32 = True
 	
+	gacc_plugin = GradientAccumulationPlugin(
+		num_steps=int(settings["grad_accum_steps"]),
+		adjust_scheduler=True,
+		sync_with_dataloader=True
+	)
 	accelerator = Accelerator(
-		gradient_accumulation_steps=int(settings["grad_accum_steps"]),
+		gradient_accumulation_plugin=gacc_plugin,
 		log_with="tensorboard",
 		project_dir=f"{settings['checkpoint_path']}"
 	)
@@ -496,7 +500,7 @@ def main():
 					print(f"Duplicated {len(dropouts)} caches for caption dropout.")
 					print(f"Total Cached Step Count: {len(latent_cache)}")
 		
-		dataloader = DataLoader(
+		dataloader = torch.utils.data.DataLoader(
 			latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, 
 		)
 
