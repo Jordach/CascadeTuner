@@ -542,8 +542,6 @@ def main():
 		generator_ema = load_model(generator_ema, "generator_ema", settings=settings, accelerator=accelerator)
 		generator_ema.to(accelerator.device, dtype=main_dtype)
 
-	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
-
 	# Load optimizers and LR schedules
 	if accelerator.is_main_process:
 		print("Loading optimizer[s].")
@@ -568,9 +566,6 @@ def main():
 		num_training_steps=len(dataloader)
 	)
 
-	if settings["accelerate_test"]:
-		unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
-
 	# Text Encoder optimizer and LR schedule
 	# Make dummy variables to keep them always available
 	text_optimizer = ""
@@ -591,7 +586,12 @@ def main():
 			num_warmup_steps=settings["warmup_updates"],
 			num_training_steps=len(dataloader)
 		)
-		if settings["accelerate_test"]:
+
+	# Prepare everything at the same time
+	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
+	if settings["accelerate_test"]:
+		unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
+		if settings["train_text_encoder"]:
 			text_optimizer, text_scheduler = accelerator.prepare(text_optimizer, text_scheduler)
 
 	if accelerator.is_main_process:
