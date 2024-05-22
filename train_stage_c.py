@@ -4,7 +4,6 @@ import torchvision
 from torch import nn, optim
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPVisionModelWithProjection
 import transformers
-#from diffusers.optimization import get_scheduler
 
 import sys
 import os
@@ -12,14 +11,13 @@ import math
 import copy
 import random
 import itertools
-from core_util import create_folder_if_necessary, load_or_fail, load_optimizer, save_model, save_optimizer, update_weights_ema
+from core_util import create_folder_if_necessary, load_or_fail, save_model, update_weights_ema
 from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseCond, DDPMSampler, P2LossWeight, AdaptiveLossWeight
-from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock, enable_checkpointing_for_stable_cascade_blocks
+from model_util import EfficientNetEncoder, StageC, enable_checkpointing_for_stable_cascade_blocks
 from dataset_util import BucketWalker, CachedLatents, RegularLatents
 from xformers_util import convert_state_dict_mha_to_normal_attn
 from optim_util import step_adafactor
 from bucketeer import Bucketeer
-from warmup_scheduler import GradualWarmupScheduler
 from fractions import Fraction
 from torch.utils.checkpoint import checkpoint
 from diffusers.optimization import get_scheduler
@@ -27,8 +25,8 @@ from diffusers.optimization import get_scheduler
 from torchtools.transforms import SmartCrop
 
 from torch.utils.data import DataLoader
-from accelerate import init_empty_weights, Accelerator
-from accelerate.utils import set_module_tensor_to_device, set_seed
+from accelerate import Accelerator
+from accelerate.utils import set_seed
 from contextlib import contextmanager, nullcontext
 from tqdm import tqdm
 import yaml
@@ -589,7 +587,7 @@ def main():
 
 		text_scheduler = get_scheduler(
 			settings["text_lr_scheduler"],
-			optimizer=unet_optimizer,
+			optimizer=text_optimizer,
 			num_warmup_steps=settings["warmup_updates"],
 			num_training_steps=len(dataloader)
 		)
