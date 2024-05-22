@@ -679,7 +679,7 @@ def main():
 							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
 							"clip_img": image_embeddings.to(dtype=main_dtype)
 						}
-					)
+					).sample
 					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
 					loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
 					# And convert to fp32 
