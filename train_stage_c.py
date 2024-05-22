@@ -172,6 +172,7 @@ def main():
 	settings["accelerate_test"] = False
 	settings["lr_scheduler"] = "constant_with_warmup"
 	settings["text_lr_scheduler"] = "constant_with_warmup"
+	settings["grad_accum_steps"] = 1
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
@@ -588,6 +589,7 @@ def main():
 		)
 
 	# Prepare everything at the same time
+	generator.train()
 	generator, dataloader, text_model = accelerator.prepare(generator, dataloader, text_model)
 	if settings["accelerate_test"]:
 		unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
@@ -600,7 +602,6 @@ def main():
 	# Training loop
 	steps_bar = tqdm(range(len(dataloader)), desc="Steps to Epoch", disable=not accelerator.is_local_main_process)
 	epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs", disable=not accelerator.is_local_main_process)
-	generator.train()
 	total_steps = 0
 
 	# Special case for handling latent caching
