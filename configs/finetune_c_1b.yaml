@@ -54,6 +54,10 @@ save_every: 5000
 warmup_updates: 1
 text_warmup_updates: 1
 
+# The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"]
+lr_scheduler: constant_with_warmup
+text_lr_scheduler: constant_with_warmup
+
 # Set a seed number of your choosing
 seed: 69
 

@@ -22,6 +22,7 @@ from bucketeer import Bucketeer
 from warmup_scheduler import GradualWarmupScheduler
 from fractions import Fraction
 from torch.utils.checkpoint import checkpoint
+from diffusers.optimization import get_scheduler
 
 from torchtools.transforms import SmartCrop
 
@@ -171,6 +172,8 @@ def main():
 	settings["loss_floor"] = 0
 	settings["train_text_encoder"] = False
 	settings["accelerate_test"] = False
+	settings["lr_scheduler"] = "constant_with_warmup"
+	settings["text_lr_scheduler"] = "constant_with_warmup"
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
@@ -558,12 +561,17 @@ def main():
 	# Special hook for stochastic rounding for adafactor
 	if settings["optimizer_type"].lower() == "adafactorstoch":
 		unet_optimizer.step = step_adafactor.__get__(unet_optimizer, transformers.optimization.Adafactor)
-	if settings["accelerate_test"]:
-		unet_optimizer = accelerator.prepare(unet_optimizer)
 
-	unet_scheduler = transformers.get_constant_schedule_with_warmup(unet_optimizer, num_warmup_steps=settings["warmup_updates"])
+	# if settings["accelerate_test"]:
+	unet_scheduler = get_scheduler(
+		settings["lr_scheduler"],
+		optimizer=unet_optimizer,
+		num_warmup_steps=settings["warmup_updates"],
+		num_training_steps=len(dataloader)
+	)
+
 	if settings["accelerate_test"]:
-		unet_scheduler = accelerator.prepare(unet_scheduler)
+		unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
 
 	# Text Encoder optimizer and LR schedule
 	# Make dummy variables to keep them always available
@@ -578,12 +586,15 @@ def main():
 		)
 
 		text_optimizer = text_optimizer(text_params, lr=settings["text_lr"], **text_optimizer_kwargs)
-		if settings["accelerate_test"]:
-			text_optimizer = accelerator.prepare(text_optimizer)
 
-		text_scheduler = transformers.get_constant_schedule_with_warmup(text_optimizer, num_warmup_steps=settings["text_warmup_updates"])
+		text_scheduler = get_scheduler(
+			settings["text_lr_scheduler"],
+			optimizer=unet_optimizer,
+			num_warmup_steps=settings["warmup_updates"],
+			num_training_steps=len(dataloader)
+		)
 		if settings["accelerate_test"]:
-			text_scheduler = accelerator.prepare(text_scheduler)
+			text_optimizer, text_scheduler = accelerator.prepare(text_optimizer, text_scheduler)
 
 	if accelerator.is_main_process:
 		accelerator.init_trackers("training")
