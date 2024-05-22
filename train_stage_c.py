@@ -510,19 +510,19 @@ def main():
 			raise ValueError('model_version key is missing from supplied YAML.')
 		
 		flash_attention = settings["flash_attention"]
-		generator_ema = None
+		# generator_ema = None
 		if settings["model_version"] == "3.6B":
 			if accelerator.is_main_process:
 				print("Creating and loading an instance of Stage C 3.6B.")
 			generator = StageC(flash_attention=flash_attention)
-			if "ema_start_iters" in settings:
-				generator_ema = StageC(flash_attention=flash_attention)
+			# if "ema_start_iters" in settings:
+				# generator_ema = StageC(flash_attention=flash_attention)
 		elif settings["model_version"] == "1B":
 			if accelerator.is_main_process:
 				print("Creating and loading an instance of Stage C 1B.")
 			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
-			if "ema_start_iters" in settings:
-				generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
+			# if "ema_start_iters" in settings:
+				# generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
 		else:
 			raise ValueError(f"Unknown model size: {settings['model_version']}, stopping.")
 
@@ -537,10 +537,10 @@ def main():
 	enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
 	generator = generator.to(accelerator.device, dtype=main_dtype)
 
-	if generator_ema is not None:
-		generator_ema.load_state_dict(generator.state_dict())
-		generator_ema = load_model(generator_ema, "generator_ema", settings=settings, accelerator=accelerator)
-		generator_ema.to(accelerator.device, dtype=main_dtype)
+	# if generator_ema is not None:
+	# 	generator_ema.load_state_dict(generator.state_dict())
+	# 	generator_ema = load_model(generator_ema, "generator_ema", settings=settings, accelerator=accelerator)
+	# 	generator_ema.to(accelerator.device, dtype=main_dtype)
 
 	# Load optimizers and LR schedules
 	if accelerator.is_main_process:
@@ -692,11 +692,11 @@ def main():
 				total_steps += 1
 
 				# Handle EMA weights
-				if generator_ema is not None and current_step % settings["ema_iters"] == 0:
-					update_weights_ema(
-						generator_ema, generator,
-						beta=(settings["ema_beta"] if current_step > settings["ema_start_iters"] else 0)
-					)
+				# if generator_ema is not None and current_step % settings["ema_iters"] == 0:
+				# 	update_weights_ema(
+				# 		generator_ema, generator,
+				# 		beta=(settings["ema_beta"] if current_step > settings["ema_start_iters"] else 0)
+				# 	)
 
 				if accelerator.is_main_process:
 					logs = {
@@ -715,7 +715,7 @@ def main():
 						accelerator.wait_for_everyone()
 						if accelerator.is_main_process:
 							save_model(
-								accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
+								accelerator.unwrap_model(generator), 
 								model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
 							)
 							if settings["train_text_encoder"]:
@@ -726,7 +726,7 @@ def main():
 				accelerator.wait_for_everyone()
 				if accelerator.is_main_process:
 					save_model(
-						accelerator.unwrap_model(generator) if generator_ema is None else accelerator.unwrap_model(generator_ema), 
+						accelerator.unwrap_model(generator), 
 						model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
 					)
 					if settings["train_text_encoder"]:
