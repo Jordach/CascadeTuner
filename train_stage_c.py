@@ -622,16 +622,12 @@ def main():
 	# Handle 
 	text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
 	last_grad_norm = 0
-	accumulator = accelerator.accumulate(generator)
-	if settings["train_text_encoder"]:
-		accumulator = accelerator.accumulate(text_model, generator)
-		accelerator.print("Accumulating for the Text Encoder!")
-	with accumulator:
-		generator.train()
-		for e in epoch_bar:
-			current_step = 0
-			steps_bar.reset(total=len(dataloader))
-			for step, batch in enumerate(dataloader):
+	generator.train()
+	for e in epoch_bar:
+		current_step = 0
+		steps_bar.reset(total=len(dataloader))
+		for step, batch in enumerate(dataloader):
+			with accelerator.accumulate(generator) if not settings["train_text_encoder"] else accelerator.accumulate(generator, text_model):
 				captions = batch[0]["tokens"]
 				attn_mask = batch[0]["att_mask"]
 				images = batch[0]["images"] if not is_latent_cache else None
