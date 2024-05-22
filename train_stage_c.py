@@ -727,19 +727,19 @@ def main():
 							text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 							tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 
-			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
-				accelerator.wait_for_everyone()
-				if accelerator.is_main_process:
-					save_model(
-						accelerator.unwrap_model(generator), 
-						model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
-					)
-					if settings["train_text_encoder"]:
-						text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
-						tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
-			
-			settings["seed"] += 1
-			set_seed(settings["seed"])
+		if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
+			accelerator.wait_for_everyone()
+			if accelerator.is_main_process:
+				save_model(
+					accelerator.unwrap_model(generator), 
+					model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
+				)
+				if settings["train_text_encoder"]:
+					text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
+					tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
+		
+		settings["seed"] += 1
+		set_seed(settings["seed"])
 
 if __name__ == "__main__":
 	main()
