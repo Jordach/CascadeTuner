@@ -618,7 +618,10 @@ def main():
 	# Handle 
 	text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
 	last_grad_norm = 0
-	accumulator = accelerator.accumulate(generator, text_model) if settings["train_text_encoder"] else accelerator.accumulate(generator)
+	accumulator = accelerator.accumulate(generator)
+	if settings["train_text_encoder"]:
+		accumulator = accelerator.accumulate(text_model, generator)
+		accelerator.print("Accumulating for the Text Encoder!")
 	with accumulator:
 		generator.train()
 		for e in epoch_bar:
