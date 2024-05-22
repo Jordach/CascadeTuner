@@ -703,29 +703,29 @@ def main():
 				# 		beta=(settings["ema_beta"] if current_step > settings["ema_start_iters"] else 0)
 				# 	)
 
-				if accelerator.is_main_process:
-					logs = {
-						"loss": loss_adjusted.mean().item(),
-						"grad_norm": last_grad_norm,
-						"lr": unet_scheduler.get_last_lr()[0]
-					}
+			if accelerator.is_main_process:
+				logs = {
+					"loss": loss_adjusted.mean().item(),
+					"grad_norm": last_grad_norm,
+					"lr": unet_scheduler.get_last_lr()[0]
+				}
 
-					if settings["train_text_encoder"]:
-						logs["te_lr"] = text_scheduler.get_last_lr()[0]
+				if settings["train_text_encoder"]:
+					logs["te_lr"] = text_scheduler.get_last_lr()[0]
 
-					epoch_bar.set_postfix(logs)
-					accelerator.log(logs, step=total_steps)
+				epoch_bar.set_postfix(logs)
+				accelerator.log(logs, step=total_steps)
 
-					if (current_step) % settings["save_every"] == 0:
-						accelerator.wait_for_everyone()
-						if accelerator.is_main_process:
-							save_model(
-								accelerator.unwrap_model(generator), 
-								model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
-							)
-							if settings["train_text_encoder"]:
-								text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
-								tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
+				if (current_step) % settings["save_every"] == 0:
+					accelerator.wait_for_everyone()
+					if accelerator.is_main_process:
+						save_model(
+							accelerator.unwrap_model(generator), 
+							model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
+						)
+						if settings["train_text_encoder"]:
+							text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
+							tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 
 			if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
 				accelerator.wait_for_everyone()
