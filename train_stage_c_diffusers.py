@@ -667,21 +667,22 @@ def main():
 							image_embeddings[rand_id] = image_model(clip_preprocess(images[rand_id].to(dtype=main_dtype))).image_embeds.to(dtype=main_dtype) if not is_latent_cache else batch[0]["clip_cache"][rand_id].to(dtype=main_dtype)
 					image_embeddings = image_embeddings.unsqueeze(1)
 
+				with torch.enable_grad():
 					# Get Latents
 					latents = effnet(effnet_preprocess(images.to(dtype=main_dtype))) if not is_latent_cache else batch[0]["effnet_cache"]
 					noised, noise, target, logSNR, noise_cond, loss_weight = gdf.diffuse(latents.to(dtype=main_dtype), shift=1, loss_shift=1)
 
-				# Forwards Pass
-				with accelerator.autocast():
-					pred = generator(noised, noise_cond, 
-						**{
-							"clip_text": text_embeddings.to(dtype=main_dtype),
-							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
-							"clip_img": image_embeddings.to(dtype=main_dtype)
-						}
-					).sample
-					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
-					loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
+					# Forwards Pass
+					with accelerator.autocast():
+						pred = generator(noised, noise_cond, 
+							**{
+								"clip_text": text_embeddings.to(dtype=main_dtype),
+								"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
+								"clip_img": image_embeddings.to(dtype=main_dtype)
+							}
+						).sample
+						loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
+						loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
 					# And convert to fp32 
 					loss_adjusted = loss_adjusted.to(dtype=torch.float32)
 
