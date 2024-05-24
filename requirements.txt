@@ -1,7 +1,7 @@
 --find-links https://download.pytorch.org/whl/cu121
-torch>=2.2+cu121
+torch>=2.3+cu121
 torchvision>=0.16.2+cu121
-accelerate>=0.25.0
+accelerate>=0.30.0
 bitsandbytes>=0.42.0
 transformers>=4.30.0
 numpy>=1.23.5
@@ -19,3 +19,4 @@ onnx2torch>=1.5.13
 warmup-scheduler @ git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 torchtools @ git+https://github.com/pabloppp/pytorch-tools
 tensorboard
+diffusers
