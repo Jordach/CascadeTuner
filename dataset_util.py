@@ -2,6 +2,8 @@
 import warnings
 import os
 import random
+import math
+import numpy as np
 from tqdm import tqdm
 from PIL import Image, ImageFile
 from PIL import UnidentifiedImageError
@@ -163,9 +165,13 @@ import torch
 
 # This is known to work on multi-GPU setups
 class CachedLatents(Dataset):
-	def __init__(self, accelerator):
+	def __init__(self, accelerator, tokenizer=None, tag_shuffle=False):
 		self.cache_paths = []
 		self.accelerator = accelerator
+		self.tokenizer = tokenizer
+		self.tag_shuffle = tag_shuffle
+		if tag_shuffle:
+			print("Will shuffle captions in Latent Caches.")
 
 	def __len__(self):
 		return len(self.cache_paths)
@@ -177,6 +183,61 @@ class CachedLatents(Dataset):
 		cache = torch.load(self.cache_paths[index][0], map_location=self.accelerator.device)
 		if self.cache_paths[index][1]:
 			cache["dropout"] = True
+		if self.tag_shuffle:
+			shuffled_captions = []
+			for caption in cache["captions"]:
+				shuffled_caption = ""
+				tags = caption.split(",")
+				random.shuffle(tags)
+				for tag in tags:
+					t = tag.strip()
+					shuffled_caption += f"{t}, "
+				shuffled_captions.append(shuffled_caption)
+
+			raw_tokens = self.tokenizer(
+				shuffled_captions,
+				padding=False,
+				add_special_tokens=False,
+				verbose=False
+			).input_ids
+
+			# Get total number of chunks
+			max_len = max(len(x) for x in raw_tokens)
+			num_chunks = math.ceil(max_len / (self.tokenizer.model_max_length - 2))
+			if num_chunks < 1:
+				num_chunks = 1
+			
+			# Get the true padded length of the tokens
+			len_input = self.tokenizer.model_max_length - 2
+			if num_chunks > 1:
+				len_input = (self.tokenizer.model_max_length * num_chunks) - (num_chunks * 2)
+			
+			# Tokenize!
+			tokens = self.tokenizer.pad(
+				{"input_ids": raw_tokens},
+				padding="max_length",
+				max_length=len_input,
+				return_tensors="pt",
+			).to("cpu")
+			b_tokens = tokens["input_ids"]
+			b_att_mask = tokens["attention_mask"]
+
+			max_standard_tokens = self.tokenizer.model_max_length - 2
+			true_len = max(len(x) for x in b_tokens)
+			n_chunks = np.ceil(true_len / max_standard_tokens).astype(int)
+			max_len = n_chunks.item() * max_standard_tokens
+
+			# Properly manage memory here - don't bother loading tokens onto GPU.
+			# Should prevent an OOM scenario on the GPU.
+			cropped_tokens = [b_tokens[:, i:i + max_standard_tokens].clone().detach().to("cpu") for i in range(0, max_len, max_standard_tokens)]
+			cropped_attn = [b_att_mask[:, i:i + max_standard_tokens].clone().detach().to("cpu") for i in range(0, max_len, max_standard_tokens)]
+			
+			cache["tokens"] = cropped_tokens
+			cache["att_mask"] = cropped_attn
+
+			del tokens
+			del b_tokens
+			del b_att_mask
 
 		return cache
 
@@ -210,12 +271,12 @@ class RegularLatents(Dataset):
 		batch = {
 			"aspects": self.batches[0][0]["aspects"],
 			"images": images,
-			"tokens": self.batches[0][0]["tokens"],
-			"att_mask": self.batches[0][0]["att_mask"],
+			"tokens": None,
+			"att_mask": None,
 			"captions": self.batches[0][0]["captions"],
 			"dropout": False
 		}
-
+		
 		return batch
 
 	def get_batch_list(self):

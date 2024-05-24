@@ -25,6 +25,7 @@ from torchtools.transforms import SmartCrop
 
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
+from accelerate.utils import set_seed
 from contextlib import contextmanager, nullcontext
 from tqdm import tqdm
 import yaml
@@ -170,6 +171,7 @@ def main():
 	settings["lr_scheduler"] = "constant_with_warmup"
 	settings["text_lr_scheduler"] = "constant_with_warmup"
 	settings["grad_accum_steps"] = 1
+	settings["tag_shuffling"] = False
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
@@ -438,7 +440,7 @@ def main():
 			cache[0]["dropout"] = True
 		return cache
 
-	latent_cache = CachedLatents(accelerator=accelerator)
+	latent_cache = CachedLatents(accelerator=accelerator, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"])
 	# Create a latent cache if we're not going to load an existing one.
 	if settings["create_latent_cache"] and not settings["use_latent_cache"]:
 		create_folder_if_necessary(settings["latent_cache_location"])
