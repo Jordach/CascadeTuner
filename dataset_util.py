@@ -184,6 +184,9 @@ class CachedLatents(Dataset):
 		if self.cache_paths[index][1]:
 			cache["dropout"] = True
 		if self.tag_shuffle:
+			del cache["tokens"]
+			del cache["att_mask"]
+
 			shuffled_captions = []
 			for caption in cache["captions"]:
 				shuffled_caption = ""

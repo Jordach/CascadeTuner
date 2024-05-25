@@ -111,7 +111,7 @@ def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, 
 										max_length=tokenizer.model_max_length,
 										return_tensors="pt").to(accelerator.device)
 
-		text_encoder_output = text_model(**clip_tokens_unpooled, output_hidden_states=True)
+		text_encoder_output = accelerator.unwrap_model(text_model)(**clip_tokens_unpooled, output_hidden_states=True) if accelerator.num_processes > 1 else text_model(**clip_tokens_unpooled, output_hidden_states=True)
 		text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
 		text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
 		# Restore training mode for the text encoder
@@ -132,7 +132,7 @@ def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, 
 			#	attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
 			#else:
 			#	attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 0).to(accelerator.device)), 1)
-			text_encoder_output = text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
+			text_encoder_output = accelerator.unwrap_model(text_model)(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True) if accelerator.num_processes > 1 else text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
 
 			if text_embeddings is None:
 				text_embeddings = text_encoder_output["hidden_states"][settings["clip_skip"]]
@@ -624,13 +624,13 @@ def main():
 		current_step = 0
 		steps_bar.reset(total=len(dataloader))
 		for step, batch in enumerate(dataloader):
-			captions = batch[0]["tokens"]
-			attn_mask = batch[0]["att_mask"]
-			images = batch[0]["images"] if not is_latent_cache else None
-			dropout = batch[0]["dropout"]
-			batch_size = len(batch[0]["captions"])
-
 			with accelerator.accumulate(generator, text_model) if settings["train_text_encoder"] else accelerator.accumulate(generator):
+				captions = batch[0]["tokens"]
+				attn_mask = batch[0]["att_mask"]
+				images = batch[0]["images"] if not is_latent_cache else None
+				dropout = batch[0]["dropout"]
+				batch_size = len(batch[0]["captions"])
+
 				with text_encoder_context:
 					text_embeddings = None
 					text_embeddings_pool = None
@@ -666,9 +666,9 @@ def main():
 						}
 					)
 					loss = nn.functional.mse_loss(pred, target, reduction="none").mean(dim=[1,2,3])
-					loss_adjusted = ((loss * loss_weight)+settings["loss_floor"]).mean()
-					# And convert to fp32 
-					loss_adjusted = loss_adjusted.to(dtype=torch.float32)
+					loss_adjusted = (loss * loss_weight).mean()
+				# And convert to fp32 
+				loss_adjusted = loss_adjusted.to(dtype=torch.float32, device=accelerator.device)
 
 				if isinstance(gdf.loss_weight, AdaptiveLossWeight):
 					gdf.loss_weight.update_buckets(logSNR, loss)
@@ -702,7 +702,7 @@ def main():
 
 			if accelerator.is_main_process:
 				logs = {
-					"loss": loss_adjusted.mean().item(),
+					"loss": loss_adjusted.item(),
 					"grad_norm": last_grad_norm,
 					"lr": unet_scheduler.get_last_lr()[0]
 				}
