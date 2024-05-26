@@ -714,7 +714,6 @@ def main():
 				accelerator.log(logs, step=total_steps)
 
 				if (current_step) % settings["save_every"] == 0:
-					accelerator.wait_for_everyone()
 					if accelerator.is_main_process:
 						save_model(
 							accelerator.unwrap_model(generator), 
@@ -723,9 +722,9 @@ def main():
 						if settings["train_text_encoder"]:
 							text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 							tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
+					accelerator.wait_for_everyone()
 
 		if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
-			accelerator.wait_for_everyone()
 			if accelerator.is_main_process:
 				save_model(
 					accelerator.unwrap_model(generator), 
@@ -734,6 +733,7 @@ def main():
 				if settings["train_text_encoder"]:
 					text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
 					tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
+			accelerator.wait_for_everyone()
 		
 		settings["seed"] += 1
 		set_seed(settings["seed"])
