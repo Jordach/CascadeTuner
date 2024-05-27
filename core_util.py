@@ -53,14 +53,14 @@ def safe_save(ckpt, path, iter, accelerator=None):
         pass
     '''
     if path.endswith(".pt") or path.endswith(".ckpt"):
-        path = path.replace(".pt", f'-{iter}.pt')
+        path = path.replace(".pt", f'_{iter}.pt')
         torch.save(ckpt, path)
     elif path.endswith(".json"):
-        path = path.replace(".json", f'-{iter}.json')
+        path = path.replace(".json", f'_{iter}.json')
         with open(path, "w", encoding="utf-8") as f:
             json.dump(ckpt, f, indent=4)
     elif path.endswith(".safetensors"):
-        path = path.replace(".safetensors", f'-{iter}.safetensors')
+        path = path.replace(".safetensors", f'_{iter}.safetensors')
         #accelerator.save_model(ckpt, output_dir=path, safe_serialization=True)
         safetensors.torch.save_file(ckpt, path)
         tqdm.write(f"Saved model as: {path}")
