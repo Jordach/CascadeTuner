@@ -721,7 +721,7 @@ def main():
 					)
 					if settings["train_text_encoder"]:
 						if accelerator.num_processes > 1:
-							accelerator.unwrap(text_model).save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
+							accelerator.unwrap_model(text_model).save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 						else:
 							text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 						tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
