@@ -483,9 +483,6 @@ def main():
 				if accelerator.is_main_process:
 					print(f"Original Cached Step Count: {len(latent_cache)}")
 				total_batches = int((len(latent_cache)-1) * settings["dropout"])
-				# Handle multi-GPU proper
-				if accelerator.num_processes > 1:
-					total_batches = total_batches // accelerator.num_processes
 
 				dropouts = random.sample(latent_cache.get_cache_list(), total_batches)
 				for batch in dropouts:
