@@ -298,7 +298,7 @@ def main():
 
 	pre_dataset = []
 
-	tokenizer = AutoTokenizer.from_pretrained(settings["clip_text_model_name"])
+	tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 	# Setup Dataloader:
 	# Only load from the dataloader when not latent caching
 	if not settings["use_latent_cache"]:
