@@ -172,6 +172,9 @@ def main():
 	settings["text_lr_scheduler"] = "constant_with_warmup"
 	settings["grad_accum_steps"] = 1
 	settings["tag_shuffling"] = False
+	settings["retokenise_from_cache"] = False
+	settings["generator_checkpointing"] = True
+	settings["clip_checkpointing"] = True
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
@@ -291,7 +294,8 @@ def main():
 	if settings["train_text_encoder"]:
 		text_model.requires_grad_(True)
 		text_model.train()
-		text_model.gradient_checkpointing_enable()
+		if settings["clip_checkpointing"]:
+			text_model.gradient_checkpointing_enable()
 	else:
 		text_model.requires_grad_(False)
 		text_model.eval()
@@ -440,7 +444,7 @@ def main():
 			cache[0]["dropout"] = True
 		return cache
 
-	latent_cache = CachedLatents(accelerator=accelerator, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"])
+	latent_cache = CachedLatents(accelerator=accelerator, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"], retokenise=settings["retokenise_from_cache"])
 	# Create a latent cache if we're not going to load an existing one.
 	if settings["create_latent_cache"] and not settings["use_latent_cache"]:
 		create_folder_if_necessary(settings["latent_cache_location"])
@@ -531,7 +535,9 @@ def main():
 		# return
 	else:
 		generator = load_model(generator, model_id='generator', settings=settings, accelerator=accelerator)
-	enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
+	
+	if settings["generator_checkpointing"]:
+		enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
 	generator = generator.to(accelerator.device, dtype=main_dtype)
 
 	# if generator_ema is not None:
