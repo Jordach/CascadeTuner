@@ -173,6 +173,8 @@ class CachedLatents(Dataset):
 		self.retokenise = retokenise
 		if tag_shuffle:
 			print("Will shuffle captions in Latent Caches.")
+		if tag_shuffle:
+			print("Will retokenise captions in Latent Caches.")
 
 	def __len__(self):
 		return len(self.cache_paths)
@@ -245,7 +247,7 @@ class CachedLatents(Dataset):
 		if self.retokenise:
 			del cache["tokens"]
 			del cache["att_mask"]
-			
+
 			raw_tokens = self.tokenizer(
 				cache["captions"],
 				padding=False,
