@@ -173,7 +173,7 @@ class CachedLatents(Dataset):
 		self.retokenise = retokenise
 		if tag_shuffle:
 			print("Will shuffle captions in Latent Caches.")
-		if tag_shuffle:
+		if retokenise:
 			print("Will retokenise captions in Latent Caches.")
 
 	def __len__(self):
