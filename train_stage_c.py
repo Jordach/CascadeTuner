@@ -242,9 +242,9 @@ def main():
 	)
 
 	# Ensure text encoder and unet paths exist
+	unet_path = f"{settings['checkpoint_path']}/unet/"
+	tenc_path = f"{settings['checkpoint_path']}/text/"
 	if accelerator.is_main_process:
-		unet_path = f"{settings['checkpoint_path']}/unet/"
-		tenc_path = f"{settings['checkpoint_path']}/text/"
 		if not os.path.exists(unet_path):
 			os.makedirs(unet_path)
 		if not os.path.exists(tenc_path) and settings["train_text_encoder"]:
@@ -740,7 +740,10 @@ def main():
 						accelerator.unwrap_model(generator), 
 						model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
 					)
-					torch.save(accelerator.unwrap_model(unet_optimizer).state_dict(), f"unet/{settings['experiment_id']}_gen_optimizer_e{e}_s{current_step}.pth")
+					torch.save(
+						accelerator.unwrap_model(unet_optimizer).state_dict(),
+						os.path.join(unet_path, f"stage_c_optimizer_e{e}_s{current_step}.pth")
+					)
 
 					if settings["train_text_encoder"]:
 						if accelerator.num_processes > 1:
@@ -748,7 +751,10 @@ def main():
 						else:
 							text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 						tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
-						torch.save(accelerator.unwrap_model(text_optimizer).state_dict(), f"text/{settings['experiment_id']}_te_optimizer_e{e}_s{current_step}.pth")
+						torch.save(
+							accelerator.unwrap_model(text_optimizer).state_dict(), 
+							os.path.join(tenc_path, f"te_optimizer_e{e}_s{current_step}.pth")
+						)
 				accelerator.wait_for_everyone()
 
 		if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
@@ -757,7 +763,10 @@ def main():
 					accelerator.unwrap_model(generator), 
 					model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
 				)
-				torch.save(accelerator.unwrap_model(unet_optimizer).state_dict(), f"unet/{settings['experiment_id']}_gen_optimizer_e{e+1}.pth")
+				torch.save(
+					accelerator.unwrap_model(unet_optimizer).state_dict(),
+					os.path.join(unet_path, f"stage_c_optimizer_e{e+1}.pth")
+				)
 
 				if settings["train_text_encoder"]:
 					if accelerator.num_processes > 1:
@@ -765,7 +774,10 @@ def main():
 					else:
 						text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
 					tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
-					torch.save(accelerator.unwrap_model(text_optimizer).state_dict(), f"text/{settings['experiment_id']}_te_optimizer_e{e}.pth")
+					torch.save(
+						accelerator.unwrap_model(text_optimizer).state_dict(), 
+						os.path.join(tenc_path, f"te_optimizer_e{e+1}.pth")
+					)
 			accelerator.wait_for_everyone()
 		
 		settings["seed"] += 1
