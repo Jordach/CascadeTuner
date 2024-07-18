@@ -175,6 +175,9 @@ def main():
 	settings["retokenise_from_cache"] = False
 	settings["generator_checkpointing"] = True
 	settings["clip_checkpointing"] = True
+	settings["generator_optim"] = "_____no_path.pt"
+	settings["text_enc_optim"] = "_____no_path.pt"
+	settings["skip_steps"] = -1
 
 	gdf = GDF(
 		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
@@ -560,6 +563,10 @@ def main():
 		generator.parameters()
 	)
 	unet_optimizer = unet_optimizer(unet_params, lr=settings["lr"], **unet_optimizer_kwargs)
+	if os.path.exists(settings["generator_optim"]) and settings["generator_optim"] != "_____no_path.pt":
+		unet_optimizer.load_state_dict(settings["generator_optim"])
+	else:
+		raise ValueError("Cannot load Stage C optimizer state from disk, does it exist?")
 
 	# Special hook for stochastic rounding for adafactor
 	if settings["optimizer_type"].lower() == "adafactorstoch":
@@ -592,6 +599,10 @@ def main():
 			num_warmup_steps=settings["warmup_updates"] * settings["grad_accum_steps"],
 			num_training_steps=len(dataloader) * settings["num_epochs"]
 		)
+		if os.path.exists(settings["text_enc_optim"]) and settings["text_enc_optim"] != "_____no_path.pt":
+			text_optimizer.load_state_dict(settings["text_enc_optim"])
+		else:
+			raise ValueError("Cannot load Text Encoder optimizer state from disk, does it exist?")
 
 	# Prepare everything at the same time
 	generator, text_model = accelerator.prepare(generator, text_model)
@@ -627,6 +638,13 @@ def main():
 		current_step = 0
 		steps_bar.reset(total=len(dataloader))
 		for step, batch in enumerate(dataloader):
+			if total_steps < settings["skip_steps"] + 1 and settings["skip_steps"] > 0:
+				steps_bar.update(1)
+				current_step += 1
+				total_steps += 1
+				accelerator.wait_for_everyone()
+				continue
+
 			with accelerator.accumulate(generator, text_model) if settings["train_text_encoder"] else accelerator.accumulate(generator):
 				captions = batch[0]["tokens"]
 				attn_mask = batch[0]["att_mask"]
@@ -722,12 +740,15 @@ def main():
 						accelerator.unwrap_model(generator), 
 						model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e}_s{current_step}"
 					)
+					torch.save(accelerator.unwrap_model(unet_optimizer).state_dict(), f"unet/{settings['experiment_id']}_gen_optimizer_e{e}_s{current_step}.pth")
+
 					if settings["train_text_encoder"]:
 						if accelerator.num_processes > 1:
 							accelerator.unwrap_model(text_model).save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 						else:
 							text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
 						tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e}_s{current_step}_te/"))
+						torch.save(accelerator.unwrap_model(text_optimizer).state_dict(), f"text/{settings['experiment_id']}_te_optimizer_e{e}_s{current_step}.pth")
 				accelerator.wait_for_everyone()
 
 		if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
@@ -736,12 +757,15 @@ def main():
 					accelerator.unwrap_model(generator), 
 					model_id = f"unet/{settings['experiment_id']}", settings=settings, accelerator=accelerator, step=f"e{e+1}"
 				)
+				torch.save(accelerator.unwrap_model(unet_optimizer).state_dict(), f"unet/{settings['experiment_id']}_gen_optimizer_e{e+1}.pth")
+
 				if settings["train_text_encoder"]:
 					if accelerator.num_processes > 1:
 						accelerator.unwrap_model(text_model).save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
 					else:
 						text_model.save_pretrained(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
 					tokenizer.save_vocabulary(os.path.join(tenc_path, f"{settings['experiment_id']}_e{e+1}_te/"))
+					torch.save(accelerator.unwrap_model(text_optimizer).state_dict(), f"text/{settings['experiment_id']}_te_optimizer_e{e}.pth")
 			accelerator.wait_for_everyone()
 		
 		settings["seed"] += 1
