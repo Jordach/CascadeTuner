@@ -563,8 +563,10 @@ def main():
 		generator.parameters()
 	)
 	unet_optimizer = unet_optimizer(unet_params, lr=settings["lr"], **unet_optimizer_kwargs)
-	if os.path.exists(settings["generator_optim"]) and settings["generator_optim"] != "_____no_path.pt":
+	if os.path.exists(settings["generator_optim"]):
 		unet_optimizer.load_state_dict(settings["generator_optim"])
+	elif settings["generator_optim"] == "_____no_path.pt":
+		pass
 	else:
 		raise ValueError("Cannot load Stage C optimizer state from disk, does it exist?")
 
@@ -601,6 +603,8 @@ def main():
 		)
 		if os.path.exists(settings["text_enc_optim"]) and settings["text_enc_optim"] != "_____no_path.pt":
 			text_optimizer.load_state_dict(settings["text_enc_optim"])
+		elif settings["generator_optim"] == "_____no_path.pt":
+			pass
 		else:
 			raise ValueError("Cannot load Text Encoder optimizer state from disk, does it exist?")
 
