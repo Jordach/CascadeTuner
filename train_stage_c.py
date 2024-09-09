@@ -528,7 +528,7 @@ def main():
 		elif settings["model_version"] == "1B":
 			if accelerator.is_main_process:
 				print("Creating and loading an instance of Stage C 1B.")
-			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
+			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[6, 18], [18, 6]], flash_attention=flash_attention)
 			# if "ema_start_iters" in settings:
 				# generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
 		elif settings["model_version"] == "spectraone":
