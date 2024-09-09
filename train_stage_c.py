@@ -11,9 +11,9 @@ import math
 import copy
 import random
 import itertools
-from core_util import create_folder_if_necessary, load_or_fail, save_model, update_weights_ema
+from core_util import create_folder_if_necessary, load_or_fail, save_model, update_weights_ema, count_total_params, count_trainable_params
 from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseCond, DDPMSampler, P2LossWeight, AdaptiveLossWeight
-from model_util import EfficientNetEncoder, StageC, enable_checkpointing_for_stable_cascade_blocks
+from model_util import EfficientNetEncoder, StageC, StageC_SpectraOne, enable_checkpointing_for_stable_cascade_blocks
 from dataset_util import BucketWalker, CachedLatents, RegularLatents
 from xformers_util import convert_state_dict_mha_to_normal_attn
 from optim_util import step_adafactor
@@ -527,8 +527,17 @@ def main():
 			generator = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
 			# if "ema_start_iters" in settings:
 				# generator_ema = StageC(c_cond=1536, c_hidden=[1536, 1536], nhead=[24, 24], blocks=[[4, 12], [12, 4]], flash_attention=flash_attention)
+		elif settings["model_version"] == "spectraone":
+			if accelerator.is_main_process:
+				print("Creating and loading an instance of Spectra One Stage C 1B.")
+			generator = StageC_SpectraOne(c_cond=1536, c_hidden=[1536, 1536], nhead=[32, 32], blocks=[[4, 12], [12, 4]], c_clip_text=768, c_clip_text_pooled=768, flash_attention=flash_attention)
+			print()
 		else:
 			raise ValueError(f"Unknown model size: {settings['model_version']}, stopping.")
+
+	if accelerator.is_main_process:
+		print(f"Model Total Params:     {count_total_params(generator)}")
+		print(f"Model Trainable Params: {count_trainable_params(generator)}")
 
 	if "generator_checkpoint_path" in settings:
 		# generator.load_state_dict(load_or_fail(settings["generator_checkpoint_path"]))

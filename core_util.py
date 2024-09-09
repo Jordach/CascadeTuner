@@ -29,6 +29,12 @@ from torch.distributed.fsdp import (
 EXPECTED = "___REQUIRED___"
 EXPECTED_TRAIN = "___REQUIRED_TRAIN___"
 
+def count_trainable_params(model):
+	return sum(param.numel() for param in model.parameters() if param.requires_grad)
+
+def count_total_params(model):
+	return sum(param.numel() for param in model.parameters())
+
 # EMA
 def update_weights_ema(tgt_model, src_model, beta=0.999):
     for self_params, src_params in zip(tgt_model.parameters(), src_model.parameters()):
