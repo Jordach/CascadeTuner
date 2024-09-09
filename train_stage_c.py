@@ -305,7 +305,7 @@ def main():
 
 	pre_dataset = []
 
-	tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+	tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k" if settings["model_version"] != "spectraone" else settings["clip_text_model_name"])
 	# Setup Dataloader:
 	# Only load from the dataloader when not latent caching
 	if not settings["use_latent_cache"]:
