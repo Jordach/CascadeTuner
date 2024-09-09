@@ -770,7 +770,6 @@ class StageC_SpectraOne(nn.Module):
 
         # CONDITIONING
         self.clip_txt_mapper = nn.Linear(c_clip_text, c_cond)
-        self.clip_txt_pooled_mapper = nn.Linear(c_clip_text_pooled, c_cond * c_clip_seq)
         self.clip_img_mapper = nn.Linear(c_clip_img, c_cond * c_clip_seq)
         self.clip_norm = nn.LayerNorm(c_cond, elementwise_affine=False, eps=1e-6)
 
@@ -853,7 +852,6 @@ class StageC_SpectraOne(nn.Module):
         # --- WEIGHT INIT ---
         self.apply(self._init_weights)  # General init
         nn.init.normal_(self.clip_txt_mapper.weight, std=0.02)  # conditionings
-        nn.init.normal_(self.clip_txt_pooled_mapper.weight, std=0.02)  # conditionings
         nn.init.normal_(self.clip_img_mapper.weight, std=0.02)  # conditionings
         torch.nn.init.xavier_uniform_(self.embedding[1].weight, 0.02)  # inputs
         nn.init.constant_(self.clf[1].weight, 0)  # outputs
