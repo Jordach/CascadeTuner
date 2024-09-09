@@ -534,7 +534,7 @@ def main():
 		elif settings["model_version"] == "spectraone":
 			if accelerator.is_main_process:
 				print("Creating and loading an instance of Spectra One Stage C 1B.")
-			generator = StageC_SpectraOne(c_cond=1536, c_hidden=[1536, 1536], nhead=[32, 32], blocks=[[6, 18], [18, 6]], c_clip_text=768, c_clip_text_pooled=768, flash_attention=flash_attention)
+			generator = StageC_SpectraOne(c_cond=1536, c_hidden=[1536, 1536], nhead=[32, 32], c_clip_text=768, c_clip_text_pooled=768, flash_attention=flash_attention)
 			print()
 		else:
 			raise ValueError(f"Unknown model size: {settings['model_version']}, stopping.")
