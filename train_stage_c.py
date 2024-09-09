@@ -2,7 +2,7 @@ import time
 import torch
 import torchvision
 from torch import nn, optim
-from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPVisionModelWithProjection
+from transformers import AutoTokenizer,  CLIPTextModel, CLIPTextModelWithProjection, CLIPVisionModelWithProjection
 import transformers
 
 import sys
@@ -288,7 +288,10 @@ def main():
 	# CLIP Encoders
 	if accelerator.is_main_process:
 		print("Loading CLIP Text Encoder")
-	text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).to(accelerator.device, dtype=main_dtype if not settings["train_text_encoder"] else torch.float32)
+	if settings["model_version"] == "spectraone":
+		text_model = CLIPTextModel.from_pretrained(settings["clip_text_model_name"]).to(accelerator.device, dtype=main_dtype if not settings["train_text_encoder"] else torch.float32)
+	else:
+		text_model = CLIPTextModelWithProjection.from_pretrained(settings["clip_text_model_name"]).to(accelerator.device, dtype=main_dtype if not settings["train_text_encoder"] else torch.float32)
 	if accelerator.is_main_process:
 		print("Loading CLIP Image Encoder")
 	image_model = CLIPVisionModelWithProjection.from_pretrained(settings["clip_image_model_name"]).requires_grad_(False).to(accelerator.device, dtype=main_dtype)
