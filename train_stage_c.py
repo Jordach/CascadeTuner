@@ -701,7 +701,7 @@ def main():
 					pred = generator(noised, noise_cond, 
 						**{
 							"clip_text": text_embeddings.to(dtype=main_dtype),
-							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype),
+							"clip_text_pooled": text_embeddings_pool.to(dtype=main_dtype) if text_embeddings_pool is not None else text_embeddings_pool,
 							"clip_img": image_embeddings.to(dtype=main_dtype)
 						}
 					)
