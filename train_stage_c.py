@@ -113,7 +113,7 @@ def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, 
 
 		text_encoder_output = accelerator.unwrap_model(text_model)(**clip_tokens_unpooled, output_hidden_states=True) if accelerator.num_processes > 1 else text_model(**clip_tokens_unpooled, output_hidden_states=True)
 		text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
-		text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
+		text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
 		# Restore training mode for the text encoder
 		if settings["train_text_encoder"]:
 			text_model.train()
@@ -136,10 +136,10 @@ def text_cache(dropout, text_model, accelerator, captions, att_mask, tokenizer, 
 
 			if text_embeddings is None:
 				text_embeddings = text_encoder_output["hidden_states"][settings["clip_skip"]]
-				text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1)
+				text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
 			else:
 				text_embeddings = torch.cat((text_embeddings, text_encoder_output["hidden_states"][settings["clip_skip"]]), dim=-2)
-				text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2)
+				text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2) if "text_embeds" in text_encoder_output else None
 
 	return text_embeddings, text_embeddings_pool
 
