@@ -154,6 +154,7 @@ def main():
 	settings["checkpoint_extension"] = "safetensors"
 	settings["clip_image_model_name"] = "openai/clip-vit-large-patch14"
 	settings["clip_text_model_name"] = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+	settings["clip_tokeniser"] = "openai/clip-vit-large-patch14"
 	settings["num_epochs"] = 1
 	settings["save_every_n_epoch"] = 1
 	settings["clip_skip"] = -1
@@ -305,7 +306,7 @@ def main():
 
 	pre_dataset = []
 
-	tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k" if settings["model_version"] != "spectraone" else settings["clip_text_model_name"])
+	tokenizer = AutoTokenizer.from_pretrained(settings["clip_tokeniser"])
 	# Setup Dataloader:
 	# Only load from the dataloader when not latent caching
 	if not settings["use_latent_cache"]:
@@ -546,7 +547,9 @@ def main():
 		# optree.tree_map(lambda x: print(x.dtype), generator.state_dict())
 		# return
 	else:
-		generator = load_model(generator, model_id='generator', settings=settings, accelerator=accelerator)
+		if accelerator.is_main_process:
+			print("WARNING: Initialising model from empty weights. Please ensure your YAML contains generator_checkpoint_path.")
+		# generator = load_model(generator, model_id='generator', settings=settings, accelerator=accelerator)
 	
 	if settings["generator_checkpointing"]:
 		enable_checkpointing_for_stable_cascade_blocks(generator, accelerator.device)
