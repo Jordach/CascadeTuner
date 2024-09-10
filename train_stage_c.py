@@ -154,7 +154,7 @@ def main():
 	settings["checkpoint_extension"] = "safetensors"
 	settings["clip_image_model_name"] = "openai/clip-vit-large-patch14"
 	settings["clip_text_model_name"] = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-	settings["clip_tokeniser"] = "openai/clip-vit-large-patch14"
+	settings["clip_tokeniser"] = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
 	settings["num_epochs"] = 1
 	settings["save_every_n_epoch"] = 1
 	settings["clip_skip"] = -1
