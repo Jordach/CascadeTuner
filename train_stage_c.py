@@ -580,6 +580,9 @@ def main():
 	unet_optimizer = unet_optimizer(unet_params, lr=settings["lr"], **unet_optimizer_kwargs)
 	if os.path.exists(settings["generator_optim"]):
 		unet_optimizer.load_state_dict(torch.load(settings["generator_optim"]))
+		# Reset the LR to the new values
+		for param in unet_optimizer.param_groups:
+			param["lr"] = settings["lr"]
 	elif settings["generator_optim"] == "_____no_path.pt":
 		pass
 	else:
@@ -609,6 +612,15 @@ def main():
 		)
 
 		text_optimizer = text_optimizer(text_params, lr=settings["text_lr"], **text_optimizer_kwargs)
+		if os.path.exists(settings["text_enc_optim"]) and settings["text_enc_optim"] != "_____no_path.pt":
+			text_optimizer.load_state_dict(torch.load(settings["text_enc_optim"]))
+			# Reset the LR to the new values
+			for param in text_optimizer.param_groups:
+				param["lr"] = settings["text_lr"]
+		elif settings["generator_optim"] == "_____no_path.pt":
+			pass
+		else:
+			raise ValueError("Cannot load Text Encoder optimizer state from disk, does it exist?")
 
 		text_scheduler = get_scheduler(
 			settings["text_lr_scheduler"],
@@ -616,12 +628,6 @@ def main():
 			num_warmup_steps=settings["warmup_updates"] * settings["grad_accum_steps"],
 			num_training_steps=len(dataloader) * settings["num_epochs"]
 		)
-		if os.path.exists(settings["text_enc_optim"]) and settings["text_enc_optim"] != "_____no_path.pt":
-			text_optimizer.load_state_dict(torch.load(settings["text_enc_optim"]))
-		elif settings["generator_optim"] == "_____no_path.pt":
-			pass
-		else:
-			raise ValueError("Cannot load Text Encoder optimizer state from disk, does it exist?")
 
 	# Prepare everything at the same time
 	generator, text_model = accelerator.prepare(generator, text_model)
