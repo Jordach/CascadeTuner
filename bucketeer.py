@@ -137,7 +137,7 @@ class Bucketeer():
 		actual_ratio = w/h
 
 		crop_dims = self.get_closest_size(w, h)
-		resize_dims = self.get_resize_size((h, w) if actual_ratio >= 1 else (w, h), crop_dims)
+		resize_dims = self.get_resize_size((h, w), crop_dims)
 		rs_se = resize_dims
 		rs_le = int(resize_dims * actual_ratio)
 		crop_se = min(crop_dims)
@@ -154,8 +154,8 @@ class Bucketeer():
 			rs_w = rs_se
 			rs_h = rs_le
 
-		latent_w = crop_size[0] // self.factor
-		latent_h = crop_size[1] // self.factor
+		latent_w = crop_size[0] / self.factor
+		latent_h = crop_size[1] / self.factor
 
 		if emit_print:
 			print(f"image in: {int(w)}x{int(h)}, resize: {rs_w}x{rs_h}, crop: {crop_size[0]}x{crop_size[1]} latent: {latent_w}x{latent_h}, ratio: {actual_ratio:.2f}")
