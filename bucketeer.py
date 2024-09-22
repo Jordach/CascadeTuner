@@ -158,5 +158,5 @@ class Bucketeer():
 		latent_h = crop_size[1] / self.factor
 
 		if emit_print:
-			print(f"image in: {int(w)}x{int(h)}, resize: {rs_w}x{rs_h}, crop: {crop_size[0]}x{crop_size[1]} latent: {latent_w}x{latent_h}, ratio: {actual_ratio:.2f}")
+			print(f"image in: {int(w)}x{int(h)}, resize: {rs_w}x{rs_h}, crop: {crop_size[0]}x{crop_size[1]}, latent: {latent_w}x{latent_h}, ratio: {actual_ratio:.2f}")
 		return latent_w, latent_h
