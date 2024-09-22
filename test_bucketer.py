@@ -28,9 +28,8 @@ bucketer = Bucketeer(
 	reverse_list=False
 )
 
-for i in range(r_min, r_max+1):
-	ratio = i/100
-	if i < 1:
+for ratio in test_ratios:
+	if ratio < 1:
 		bucketer.test_resize(1000*ratio, 1000, emit_print=True)
 	else:
 		bucketer.test_resize(1000, 1000*ratio, emit_print=True)
