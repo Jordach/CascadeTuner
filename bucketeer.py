@@ -136,7 +136,7 @@ class Bucketeer():
 		# Get crop and resizing info for the bucket's ratio
 
 		crop_dims = self.get_closest_size(w, h)
-		resize_dims = self.get_resize_size((h, w), crop_size)
+		resize_dims = self.get_resize_size((h, w), crop_dims)
 
 		rs_se = min(resize_dims)
 		rs_le = max(resize_dims)
