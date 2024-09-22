@@ -147,12 +147,12 @@ class Bucketeer():
 		# They're H,W and not W,H oriented
 		if actual_ratio >= 1:
 			crop_size = [crop_le, crop_se]
-			rs_w = rs_se
-			rs_h = rs_le
-		else:
-			crop_size = [crop_se, crop_le]
 			rs_w = rs_le
 			rs_h = rs_se
+		else:
+			crop_size = [crop_se, crop_le]
+			rs_w = rs_se
+			rs_h = rs_le
 
 		latent_w = crop_size[0] // self.factor
 		latent_h = crop_size[1] // self.factor
