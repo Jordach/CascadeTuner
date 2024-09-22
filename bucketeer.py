@@ -134,30 +134,30 @@ class Bucketeer():
 
 	def test_resize(self, w, h, emit_print=False):
 		# Get crop and resizing info for the bucket's ratio
+		actual_ratio = w/h
 
 		crop_dims = self.get_closest_size(w, h)
-		resize_dims = self.get_resize_size((h, w), crop_dims)
+		resize_dims = self.get_resize_size((h, w) if actual_ratio >= 1 else (w, h), crop_dims)
 		print(resize_dims)
-		rs_se = min(resize_dims)
-		rs_le = max(resize_dims)
+		rs_se = resize_dims
+		rs_le = int(resize_dims * actual_ratio)
 		crop_se = min(crop_dims)
 		crop_le = max(crop_dims)
 
 		# A note on TorchVision CenterCrop and PIL resize:
 		# They're H,W and not W,H oriented
-		actual_ratio = w/h
 		if actual_ratio >= 1:
-			rs_size = [rs_le, rs_se]
 			crop_size = [crop_le, crop_se]
+			rs_w = rs_se
+			rs_h = rs_le
 		else:
-			rs_size = [rs_se, rs_le]
 			crop_size = [crop_se, crop_le]
+			rs_w = rs_le
+			rs_h = rs_se
 
-		rs_w = rs_size[0]
-		rs_h = rs_size[1]
 		latent_w = crop_size[0] // self.factor
 		latent_h = crop_size[1] // self.factor
 
 		if emit_print:
-			print(f"image in: {int(w)}x{int(h)}, resize: {rs_w}x{rs_h}, latent: {latent_w}x{latent_h}, ratio: {w/h:.2f}")
+			print(f"image in: {int(w)}x{int(h)}, resize: {rs_w}x{rs_h}, latent: {latent_w}x{latent_h}, ratio: {actual_ratio:.2f}")
 		return latent_w, latent_h
