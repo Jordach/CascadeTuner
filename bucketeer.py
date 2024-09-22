@@ -139,7 +139,7 @@ class Bucketeer():
 		crop_dims = self.get_closest_size(w, h)
 		resize_dims = self.get_resize_size((h, w), crop_dims)
 		rs_se = resize_dims
-		rs_le = int(resize_dims * actual_ratio)
+		rs_le = int(resize_dims * actual_ratio) if actual_ratio >= 1 else int(resize_dims / actual_ratio)
 		crop_se = min(crop_dims)
 		crop_le = max(crop_dims)
 
