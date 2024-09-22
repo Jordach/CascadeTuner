@@ -119,3 +119,37 @@ class Bucketeer():
 			# with open(file_path, "a") as f:
 			# 	f.write(f"{actual_ratio:.2f},{w}x{h},{nw}x{nh},{crop_size[1]}x{crop_size[0]},{crop_img[1]}x{crop_img[0]}\n")
 			return img
+
+	def test_resize(self, w, h, ratio):
+		img_se = min(w, h)
+		img_le = max(w, h)
+
+		# Get crop and resizing info for the bucket's ratio
+		resize_dims = self.get_closest_size(w, h)
+		resize_se = min(resize_dims[0], resize_dims[1])
+		resize_le = max(resize_dims[0], resize_dims[1])
+
+		_crop_se = (math.sqrt(self.density)* 2)
+		_crop_le = (math.sqrt(self.density)* 2) * ratio
+		crop_dims = self.get_closest_size(_crop_se, _crop_le)
+		crop_se = min(crop_dims[0], crop_dims[1])
+		crop_le = max(crop_dims[0], crop_dims[1])
+
+		# Get resizing factor
+		scale_factor = (resize_se + 32) / img_se
+		new_le = int(img_le * scale_factor)
+
+		# A note on TorchVision CenterCrop and PIL resize:
+		# They're H,W and not W,H oriented
+		actual_ratio = w/h
+		if actual_ratio >= 1:
+			crop_size = [crop_le, crop_se]
+		else:
+			crop_size = [crop_se, crop_le]
+
+		latent_w = crop_size[0] // self.factor
+		latent_h = crop_size[1] // self.factor
+		
+		mean_latent = (latent_w + latent_h) / 2
+		mean_pixels = (w + h) / 2
+		print(f"image in: {int(w)}x{int(h)}, resize n crop: {crop_size[0]}x{crop_size[1]}, latent: {latent_w}x{latent_h} mean: {mean_latent} {mean_pixels}, ratio: {ratio}")

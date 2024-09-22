@@ -1,193 +1,147 @@
 import torch
 import torchvision
-from torch import nn, optim
-from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPVisionModelWithProjection
-#from diffusers.optimization import get_scheduler
-
-import sys
-import os
-from core_util import load_or_fail, setup_webdataset_path, MultiFilter, MultiGetter
-from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseCond, DDPMSampler, P2LossWeight, AdaptiveLossWeight
-from model_util import EfficientNetEncoder, StageC, ResBlock, AttnBlock, TimestepBlock, FeedForwardBlock, Previewer
-from dataset_util import BucketWalker
-from bucketeer import Bucketeer
-from fractions import Fraction
-
-from torchtools.transforms import SmartCrop
-
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.wrap import ModuleWrapPolicy
-from torch.utils.data import Dataset, DataLoader
-from accelerate import init_empty_weights, Accelerator
-from accelerate.utils import set_module_tensor_to_device
-from contextlib import contextmanager
-import yaml
-import json
 import numpy as np
+from torchtools.transforms import SmartCrop
+import math
+from torch.utils.data import Dataset, DataLoader
+from PIL import Image
+import warnings
 
+class Bucketeer():
+	def __init__(
+		self,
+		density=256*256,
+		factor=8,
+		ratios=[1/1, 1/2, 3/4, 3/5, 4/5, 6/9, 9/16],
+		reverse_list=True,
+		randomize_p=0.3,
+		randomize_q=0.2,
+		crop_mode='center',
+		p_random_ratio=0.0,
+		interpolate_nearest=False,
+		transforms=None,
+		settings=None
+	):
+		assert crop_mode in ['center', 'random', 'smart']
+		self.crop_mode = crop_mode
+		self.ratios = ratios
+		if reverse_list:
+			for r in list(ratios):
+				if 1/r not in self.ratios:
+					self.ratios.append(1/r)
+		self.sizes = [(int(((density/r)**0.5//factor)*factor), int(((density*r)**0.5//factor)*factor)) for r in ratios]        
+		self.smartcrop = SmartCrop(int(density**0.5), randomize_p, randomize_q) if self.crop_mode=='smart' else None
+		self.p_random_ratio = p_random_ratio
+		self.interpolate_nearest = interpolate_nearest
+		self.transforms = transforms
+		self.density = density
+		self.settings = settings
+		self.factor = factor
 
-# Handle special command line args
-import argparse
-parser = argparse.ArgumentParser(description="Simpler example of a Cascade training script.")
-parser.add_argument("--yaml", default=None, type=str, help="The training configuration YAML")
-args = parser.parse_args()
-
-models = {}
-settings = {}
-info = {
-	#"ema_loss": "",
-	#"adaptive_loss": {}
-}
-
-def get_conditions(batch, models, extras):
-	pass
-
-def load_model(model, model_id=None, full_path=None, strict=True, settings=None):
-	if model_id is not None and full_path is None:
-		full_path = f"{settings['checkpoint_path']}/{settings['experiment_id']}/{model_id}.{settings['checkpoint_extension']}"
-	elif full_path is None and model_id is None:
-		raise ValueError("Loading a model expects full_path or model_id to be defined.")
-
-	ckpt = load_or_fail(full_path, wandb_run_id=None)
-	if ckpt is not None:
-		model.load_state_dict(ckpt, strict=strict)
-		del ckpt
-	return model
-
-# Replaced WarpCore with a more simplified version of it
-# made compatible with HF Accelerate
-def main():
-	global settings
-	global info
-	global models
-	# Basic Setup
-
-	settings["checkpoint_extension"] = "safetensors"
-	settings["allow_tf32"] = True
-	settings["wandb_project"] = None
-	settings["wandb_entity"] = None
-	settings["clip_image_model_name"] = "openai/clip-vit-large-patch14"
-	settings["clip_text_model_name"] = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-	
-	gdf_loss_weight = P2LossWeight()
-	if "adaptive_loss_weight" in settings:
-		if settings["adaptive_loss_weight"]:
-			gdf_loss_weight = AdaptiveLossWeight()
-	settings["gdf"] = GDF(
-		schedule=CosineSchedule(clamp_range=[0.0001, 0.9999]),
-		input_scaler=VPScaler(), target=EpsilonTarget(),
-		noise_cond=CosineTNoiseCond(),
-		loss_weight=gdf_loss_weight,
-	)
-
-	settings["effnet_preprocess"] = torchvision.transforms.Compose([
-		torchvision.transforms.Normalize(
-			mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
-		)
-	])
-
-	# Load config:
-	loaded_config = ""
-	if args.yaml is not None:
-		if args.yaml.endswith(".yml") or args.yaml.endswith(".yaml"):
-			with open(args.yaml, "r", encoding="utf-8") as file:
-				loaded_config = yaml.safe_load(file)
-		elif args.yaml.endswith(".json"):
-			with open(args.yaml, "r", encoding="utf-8") as file:
-				loaded_config = json.load(file)
+	def get_closest_size(self, x, y):
+		if self.p_random_ratio > 0 and np.random.rand() < self.p_random_ratio:
+			best_size_idx = np.random.randint(len(self.ratios))
 		else:
-			raise ValueError("Config file must either be a .yaml or .json file, stopping.")
+			w, h = x, y
+			best_size_idx = np.argmin([abs(w/h-r) for r in self.ratios])
+		return self.sizes[best_size_idx]
+
+	def get_resize_size(self, orig_size, tgt_size):
+		if (tgt_size[1]/tgt_size[0] - 1) * (orig_size[1]/orig_size[0] - 1) >= 0:
+			alt_min = int(math.ceil(max(tgt_size)*min(orig_size)/max(orig_size)))
+			resize_size = max(alt_min, min(tgt_size))
+		else:
+			alt_max = int(math.ceil(min(tgt_size)*max(orig_size)/min(orig_size)))
+			resize_size = max(alt_max, max(tgt_size))
+		return resize_size
+
+	def load_and_resize(self, item, ratio):
+		# Silences random warnings from PIL about "potential" DOS attacks
+		with warnings.catch_warnings():
+			warnings.simplefilter("ignore")
+			path = item
+			image = Image.open(path).convert("RGB")
+			w, h = image.size
+			img_se = min(w, h)
+			img_le = max(w, h)
+
+			# Get crop and resizing info for the bucket's ratio
+			resize_dims = self.get_closest_size(w, h)
+			resize_se = min(resize_dims[0], resize_dims[1])
+			resize_le = max(resize_dims[0], resize_dims[1])
+
+			_crop_se = (math.sqrt(self.density)* 2)
+			_crop_le = (math.sqrt(self.density)* 2) * ratio
+			crop_dims = self.get_closest_size(_crop_se, _crop_le)
+			crop_se = min(crop_dims[0], crop_dims[1])
+			crop_le = max(crop_dims[0], crop_dims[1])
+
+			# Get resizing factor
+			scale_factor = (resize_se + 32) / img_se
+			new_le = int(img_le * scale_factor)
+
+			# A note on TorchVision CenterCrop and PIL resize:
+			# They're H,W and not W,H oriented
+			actual_ratio = w/h
+			if actual_ratio >= 1:
+				# size = [resize_se+32, new_le]
+				size = [resize_se, resize_le]
+				crop_size = [crop_se, crop_le]
+			else:
+				# size = [new_le, resize_se+32]
+				size = [resize_le, resize_se]
+				crop_size = [crop_le, crop_se]
+
+			# resize_size = self.get_resize_size(img.shape[-2:], size)
+			if self.interpolate_nearest:
+				image = image.resize((size[1], size[0]), Image.Resampling.NEAREST)
+				# img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.NEAREST)
+			else:
+				image = image.resize((size[1], size[0]), Image.Resampling.LANCZOS)
+				# img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True)
+			# nw, nh = image.size
+			img = self.transforms(image)
+			del image
+
+			if self.crop_mode == 'center':
+				img = torchvision.transforms.functional.center_crop(img, crop_size)
+			elif self.crop_mode == 'random':
+				img = torchvision.transforms.RandomCrop(crop_size)(img)
+			elif self.crop_mode == 'smart':
+				self.smartcrop.output_size = crop_size
+				img = self.smartcrop(img)
+			else:
+				img = torchvision.transforms.functional.center_crop(img, crop_size)
+
+			# crop_img = img.shape[-2:]
+
+			# file_path = f"{self.settings['checkpoint_path']}/{self.settings['experiment_id']}/dataset_debug.csv"
+			# with open(file_path, "a") as f:
+			# 	f.write(f"{actual_ratio:.2f},{w}x{h},{nw}x{nh},{crop_size[1]}x{crop_size[0]},{crop_img[1]}x{crop_img[0]}\n")
+			return img
 		
-		# Set things up
-		settings = settings | loaded_config
+test_ratios = []
+
+r_min = 25
+r_max = 400
+cfactor = 8
+base_res = 1024
+
+for i in range(r_min, r_max):
+	test_ratios.append(i/100)
+
+bucketer = Bucketeer(
+	density=base_res ** 2, # Image Size Square
+	factor=cfactor, # VAE compression factor
+	ratios=test_ratios, # Known aspect ratios
+	p_random_ratio=0,
+	transforms=torchvision.transforms.ToTensor(),
+	settings = {}
+)
+
+for i in range(r_min, r_max):
+	ratio = i/100
+	if i < 1:
+		bucketer.test_resize(1000*ratio, 1000, i/100)
 	else:
-		raise ValueError("No configuration supplied, stopping.")
-
-	settings["clip_preprocess"] = torchvision.transforms.Compose([
-		torchvision.transforms.Resize(224, interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
-		torchvision.transforms.CenterCrop(224),
-		torchvision.transforms.Normalize(
-			mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711)
-		)
-	])
-
-	settings["transforms"] = torchvision.transforms.Compose([
-		torchvision.transforms.ToTensor(),
-		torchvision.transforms.Resize(settings["image_size"], interpolation=torchvision.transforms.InterpolationMode.LANCZOS, antialias=True),
-		SmartCrop(settings["image_size"], randomize_p=0.3, randomize_q=0.2)
-	])
-
-
-	full_path = f"{settings['checkpoint_path']}/{settings['experiment_id']}/info.json"
-	info_dict = load_or_fail(full_path, wandb_run_id=None) or {}
-	info = info | info_dict
-
-	# Setup GDF buckets when resuming a training run
-	if "adaptive_loss" in info:
-		if "bucket_ranges" in info["adaptive_loss"] and "bucket_losses" in info["adaptive_loss"]:
-			settings["gdf"].loss_weight.bucket_ranges = torch.tensor(info["adaptive_loss"]["bucket_ranges"])
-			settings["gdf"].loss_weight.bucket_losses = torch.tensor(info["adaptive_loss"]["bucket_losses"])
-
-	hf_accel_dtype = settings["dtype"]
-	if settings["dtype"] == "bfloat16":
-		hf_accel_dtype = "bf16"
-	elif settings["dtype"] == "tf32":
-		hf_accel_dtype = "no"
-	elif settings["dtype"] != "fp16" or settings["dtype"] != "fp32":
-		hf_accel_dtype = "no"
-	
-	accelerator = Accelerator(
-		gradient_accumulation_steps=settings["grad_accum_steps"],
-		mixed_precision=hf_accel_dtype,
-		log_with="tensorboard",
-		project_dir=f"{settings['output_path']}"
-	)
-
-	if settings["allow_tf32"]:
-		torch.backends.cuda.matmul.allow_tf32 = True
-		torch.backends.cudnn.allow_tf32 = True
-
-	# Setup Dataloader:
-	print("Loading Dataset[s].")
-	pre_dataset = BucketWalker(
-		reject_aspects=settings["reject_aspects"],
-		transforms=torchvision.transforms.ToTensor(),
-	)
-
-	if "local_dataset_path" in settings:
-		if type(settings["local_dataset_path"]) is list:
-			for dir in settings["local_dataset_path"]:
-				pre_dataset.scan_folder(dir)
-		elif type(settings["local_dataset_path"]) is str:
-			pre_dataset.scan_folder(settings["local_dataset_path"])
-		else:
-			raise ValueError("'local_dataset_path' must either be a string, or list of strings containing paths.")
-
-	pre_dataset.bucketize(settings["batch_size"], settings["seed"])
-	print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
-
-	def collate(batch):
-		images = [data["images"] for data in batch]
-		images = torch.stack(images)
-		images = images.to(memory_format=torch.contiguous_format).float()
-		caption = [data["caption"] for data in batch]
-		
-
-
-		return []
-		pass
-
-	# pre_dataloader = DataLoader(
-	# 	pre_dataset, batch_size=settings["batch_size"], num_workers=8, pin_memory=False,
-	# )
-
-	dataset = []
-	
-
-	# for i in range(10):
-	# 	batch = next(dataloader_iterator)
-	# 	print(batch)
-	# 	break
-
-if __name__ == "__main__":
-	main()
+		bucketer.test_resize(1000, 1000*ratio, i/100)
