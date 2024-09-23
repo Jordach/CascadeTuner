@@ -1,0 +1,85 @@
+# Hey you, when editing this file, please make duplicates of this file to make your own finetune configurations.
+
+# Where the resulting models will be saved. Can be absolute or relative paths.
+# Example: X:\output or /some/unix/path
+checkpoint_path: output
+# The name of the training run and model name
+# Example: X:\output\unet\stage_c_1b_finetuning.safetensors or /some/unix/path/output/unet/stage_c_1b_finetuning.safetensors
+# This will also name the output checkpoints.
+experiment_id: your_sd1_finetune
+
+# This also works: /path/to/diffusers_model 
+model_name: X:\path\to\diffusers_formatted_model
+
+# The precision of the model.
+# Preferred: bfloat16
+# Usable: float16, bfloat16, float32
+dtype: float16
+
+# The batch size.
+batch_size: 4
+
+# Set a seed number of your choosing
+seed: 69
+
+# How many tokens should the model concatenate out to?
+max_token_limit: 900
+
+# The trained image size. Must be a multiple of 32.
+# 1B was trained at 768, 3.6B was trained at 1024
+image_size: 1024
+
+# How many epochs should be trained in total?
+num_epochs: 10
+
+# How many epochs should pass before saving the model?
+save_every_n_epoch: 1
+
+# How many forwards steps can the model make before performing a backwards pass?
+grad_accum_steps: 1
+
+# How many training steps can pass before saving a copy of the model?
+save_every: 5000
+
+# The learning rate.
+lr: 5.0e-6
+text_lr: 5.0e-6
+
+# How many steps should the learning rate warm up by?
+warmup_updates: 1
+text_warmup_updates: 1
+
+# The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"]
+lr_scheduler: constant_with_warmup
+text_lr_scheduler: constant_with_warmup
+
+# Which optimiser you prefer using for Stage C/B.
+# Recommended for bf16 training: AdafactorStoch
+# Options: AdamW, AdamW8bit, Adafactor, AdafactorStoch
+optimizer_type: AdamW8bit
+# The optimizer for the Text Encoder Training (Useless when not training CLIP Text):
+text_optimizer_type: AdamW8bit
+
+# Where files are located - to repeat a folder, add it again.
+local_dataset_path: []
+# local_dataset_path: [F:\novelai, F:\Waifusion, F:\Fluffvision\images]
+
+# Whether to reject images exceeding 1:x.yz ratio (Images will be tested as if they're portrait oriented - data will not be modified)
+reject_aspects: 3.75
+
+# The percentage of steps that must be duplicated for dropout purposes
+# 0.1 = 10% (Default), 1 = 100%
+dropout: 0.1
+
+# Must be present when using an existing latent cache or creating one
+# This value can be empty when not being used by use_latent_cache or create_latent_cache
+latent_cache_location: F:\latent_cache
+
+# Will always ignore local_dataset_path, create_latent_cache and other dataloaders if set to true
+use_latent_cache: false
+
+# Whether to create a latent cache from any of the dataloaders
+create_latent_cache: false
+
+# Allows finetuning of the text encoder.
+train_text_encoder: false
