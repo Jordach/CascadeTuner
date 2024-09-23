@@ -202,7 +202,7 @@ def main():
     vae.to(accelerator.device)
     vae.requires_grad_(False)
     vae.enable_slicing()
-    if is_xformers_available() and args.attention=='xformers':
+    if is_xformers_available():
         try:
             vae.enable_xformers_memory_efficient_attention()
         except Exception as e:
@@ -259,6 +259,8 @@ def main():
         dataloader = torch.utils.data.DataLoader(
             latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, 
         )
+    # We don't need the VAE anymore - so just delete it from memory
+    del vae
 
 if __name__ == "__main__":
     main()
