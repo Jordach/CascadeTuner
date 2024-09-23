@@ -259,3 +259,6 @@ def main():
         dataloader = torch.utils.data.DataLoader(
             latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, 
         )
+
+if __name__ == "__main__":
+    main()
