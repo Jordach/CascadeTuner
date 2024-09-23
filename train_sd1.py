@@ -224,7 +224,7 @@ def main():
             del batch["images"]
 
             file_name = f"latent_cache_{settings['experiment_id']}_{step}.pt"
-            torch.save(batch, os.path.join(settings["latent_cache_location"], file_name), False)
+            torch.save(batch, os.path.join(settings["latent_cache_location"], file_name))
             latent_cache.add_latent_batch(os.path.join(settings["latent_cache_location"], file_name), False)
             step += 1
         if args.cache_only:
