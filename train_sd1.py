@@ -216,7 +216,11 @@ def main():
     latent_cache = SD1CachedLatents(accelerator=accelerator, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"])
     # Create a latent cache if we're not going to load an existing one:
     if settings["create_latent_cache"] and not settings["use_latent_cache"]:
-        create_folder_if_necessary(settings["latent_cache_location"])
+        # Ensure cache output directory exists:
+        if accelerator.is_main_process:
+            if not os.path.exists(settings["latent_cache_location"]):
+                os.makedirs(settings["latent_cache_location"])
+
         step = 0
         for batch in tqdm(dataloader, desc="Latent Caching"):
             with torch.no_grad():
