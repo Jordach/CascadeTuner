@@ -220,7 +220,7 @@ def main():
         step = 0
         for batch in tqdm(dataloader, desc="Latent Caching"):
             with torch.no_grad():
-                batch["vae_encoded"] = vae_encode(batch["images"])
+                batch["vae_encoded"] = vae_encode(batch["images"], vae)
             del batch["images"]
 
             file_name = f"latent_cache_{settings['experiment_id']}_{step}.pt"
