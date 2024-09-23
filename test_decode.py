@@ -38,5 +38,8 @@ tokenizer = CLIPTokenizer.from_pretrained("X:\sd1-5", subfolder="tokenizer")
 
 for partial in batch["tokens"]:
 	decoded_texts = tokenizer.batch_decode(partial, skip_special_tokens=True)
-	print(partial)
-	print(decoded_texts)
+	
+	pos = 0
+	for text in decoded_texts:
+		print(pos, text)
+		pos+=1
