@@ -2,7 +2,7 @@ import re
 import torch
 import math
 
-def tokenize_respecting_boundaries(self, captions):
+def tokenize_respecting_boundaries(tokenizer, captions):
 	tokenized_captions = []
 	attention_masks = []
 	
@@ -11,24 +11,24 @@ def tokenize_respecting_boundaries(self, captions):
 		attention_chunks = []
 		current_chunk = []
 		
-		# Split the caption into segments (sentences or comma-separated phrases)
-		segments = re.split(r'(?<=[.!?,])\s+', caption)
+		# Split the caption into words, keeping punctuation with words
+		words = re.findall(r'\S+|\s+', caption)
 		
-		for segment in segments:
-			# Tokenize the segment
-			segment_tokens = self.tokenizer.encode(segment, add_special_tokens=False)
+		for word in words:
+			# Tokenize the word (including any attached punctuation)
+			word_tokens = tokenizer.encode(word.strip(), add_special_tokens=False)
 			
-			# If adding this segment would exceed the chunk size, start a new chunk
-			if len(current_chunk) + len(segment_tokens) > 75:
+			# If adding this word would exceed the chunk size, start a new chunk
+			if len(current_chunk) + len(word_tokens) > 75:
 				if current_chunk:
-					padded_chunk = current_chunk + [self.tokenizer.pad_token_id] * (75 - len(current_chunk))
+					padded_chunk = current_chunk + [tokenizer.pad_token_id] * (75 - len(current_chunk))
 					caption_chunks.append(torch.tensor(padded_chunk))
 					attention_chunks.append(torch.tensor([1] * len(current_chunk) + [0] * (75 - len(current_chunk))))
-				current_chunk = segment_tokens
+				current_chunk = word_tokens
 			else:
-				current_chunk.extend(segment_tokens)
+				current_chunk.extend(word_tokens)
 			
-			# If the current chunk is full, add it to the list and start a new one
+			# If the current chunk is full or overflowing, add it to the list and start a new one
 			while len(current_chunk) >= 75:
 				caption_chunks.append(torch.tensor(current_chunk[:75]))
 				attention_chunks.append(torch.tensor([1] * 75))
@@ -36,7 +36,7 @@ def tokenize_respecting_boundaries(self, captions):
 		
 		# Add any remaining tokens in the last chunk
 		if current_chunk:
-			padded_chunk = current_chunk + [self.tokenizer.pad_token_id] * (75 - len(current_chunk))
+			padded_chunk = current_chunk + [tokenizer.pad_token_id] * (75 - len(current_chunk))
 			caption_chunks.append(torch.tensor(padded_chunk))
 			attention_chunks.append(torch.tensor([1] * len(current_chunk) + [0] * (75 - len(current_chunk))))
 		

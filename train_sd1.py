@@ -21,7 +21,7 @@ from tqdm.auto import tqdm
 from dataset_util import BucketWalker
 from bucketeer import Bucketeer
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer
-from tokeniser_util import get_text_embeds
+from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from sd1_util import SD1CachedLatents
 from core_util import create_folder_if_necessary
 logger = get_logger(__name__)
@@ -101,43 +101,9 @@ def main():
         # Do NOT load images - save that for the second dataloader pass
         images = [data["images"] for data in batch]
         caption = [data["caption"] for data in batch]
-        raw_tokens = [data["tokens"] for data in batch]
         aspects = [data["aspects"] for data in batch]
         
-        # Get total number of chunks
-        max_len = max(len(x) for x in raw_tokens)
-        num_chunks = math.ceil(max_len / (tokenizer.model_max_length - 2))
-        if num_chunks < 1:
-            num_chunks = 1
-        
-        # Get the true padded length of the tokens
-        len_input = tokenizer.model_max_length - 2
-        if num_chunks > 1:
-            len_input = (tokenizer.model_max_length * num_chunks) - (num_chunks * 2)
-        
-        # Tokenize!
-        tokens = tokenizer.pad(
-            {"input_ids": raw_tokens},
-            padding="max_length",
-            max_length=len_input,
-            return_tensors="pt",
-        ).to("cpu")
-        b_tokens = tokens["input_ids"]
-        b_att_mask = tokens["attention_mask"]
-
-        max_standard_tokens = tokenizer.model_max_length - 2
-        true_len = max(len(x) for x in b_tokens)
-        n_chunks = np.ceil(true_len / max_standard_tokens).astype(int)
-        max_len = n_chunks.item() * max_standard_tokens
-
-        # Properly manage memory here - don't bother loading tokens onto GPU.
-        # Should prevent an OOM scenario on the GPU.
-        cropped_tokens = [b_tokens[:, i:i + max_standard_tokens].clone().detach().to("cpu") for i in range(0, max_len, max_standard_tokens)]
-        cropped_attn = [b_att_mask[:, i:i + max_standard_tokens].clone().detach().to("cpu") for i in range(0, max_len, max_standard_tokens)]
-
-        del tokens
-        del b_tokens
-        del b_att_mask
+        cropped_tokens, cropped_attn = tokenize_respecting_boundaries(tokenizer, caption)
         
         return {"images": images, "tokens": cropped_tokens, "att_mask": cropped_attn, "caption": caption, "aspects": aspects, "dropout": False}
 
