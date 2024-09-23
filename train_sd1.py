@@ -103,6 +103,10 @@ def main():
         caption = [data["caption"] for data in batch]
         aspects = [data["aspects"] for data in batch]
         
+        print(len(caption))
+        for c in caption:
+            print(c)
+
         cropped_tokens, cropped_attn = tokenize_respecting_boundaries(tokenizer, caption)
         
         return {"images": images, "tokens": cropped_tokens, "att_mask": cropped_attn, "caption": caption, "aspects": aspects, "dropout": False}
