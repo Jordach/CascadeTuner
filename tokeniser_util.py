@@ -48,10 +48,18 @@ def tokenize_respecting_boundaries(tokenizer, captions):
 	# Pad all captions to have the same number of chunks
 	for i in range(len(all_caption_chunks)):
 		while len(all_caption_chunks[i]) < max_chunks:
-			all_caption_chunks[i].append([tokenizer.pad_token_id] * 75)
-			all_attention_chunks[i].append([0] * 75)
-
-	 # Convert to tensors and stack
+			if len(all_caption_chunks[i]) == 0:
+				# For captions that are completely empty, add an empty string token
+				empty_chunk = tokenizer.encode("", add_special_tokens=False)
+				padded_empty_chunk = empty_chunk + [tokenizer.pad_token_id] * (75 - len(empty_chunk))
+				all_caption_chunks[i].append(padded_empty_chunk)
+				all_attention_chunks[i].append([1] * len(empty_chunk) + [0] * (75 - len(empty_chunk)))
+			else:
+				# For captions that have run out of text, add padding
+				all_caption_chunks[i].append([tokenizer.pad_token_id] * 75)
+				all_attention_chunks[i].append([0] * 75)
+	
+	# Convert to tensors and stack
 	tokenized_captions = torch.tensor(all_caption_chunks)
 	attention_masks = torch.tensor(all_attention_chunks)
 	

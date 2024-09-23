@@ -36,6 +36,7 @@ batch = torch.load("E:\\sd1_latents\\latent_cache_your_sd1_finetune_0.pt")
 from transformers import CLIPTokenizer
 tokenizer = CLIPTokenizer.from_pretrained("X:\sd1-5", subfolder="tokenizer")
 
-pprint.pp(batch["tokens"], indent=4)
 for partial in batch["tokens"]:
 	decoded_texts = tokenizer.batch_decode(partial, skip_special_tokens=True)
+	print(partial)
+	print(decoded_texts)
