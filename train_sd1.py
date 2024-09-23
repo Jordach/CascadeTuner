@@ -155,7 +155,7 @@ def main():
 
     auto_bucketer = Bucketeer(
         density=settings["image_size"] ** 2,
-        factor=32,
+        factor=8,
         ratios=settings["multi_aspect_ratio"],
         p_random_ratio=0,
         transforms=torchvision.transforms.ToTensor(),
