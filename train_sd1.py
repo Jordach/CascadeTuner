@@ -197,6 +197,7 @@ def main():
             torch.save(batch, os.path.join(settings["latent_cache_location"], file_name))
             latent_cache.add_latent_batch(os.path.join(settings["latent_cache_location"], file_name), False)
             step += 1
+            break
         if args.cache_only:
             return 0
     elif settings["use_latent_cache"]:
