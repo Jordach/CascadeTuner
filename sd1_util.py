@@ -7,7 +7,7 @@ from tokeniser_util import tokenize_respecting_boundaries
 # This is known to work on multi-GPU setups
 class SD1CachedLatents(Dataset):
 	def __init__(self, accelerator, tokenizer=None, tag_shuffle=True):
-		self.cache_paths = []
+		self.batches = []
 		self.accelerator = accelerator
 		self.tokenizer = tokenizer
 		self.tag_shuffle = tag_shuffle
