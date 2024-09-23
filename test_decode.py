@@ -3,6 +3,7 @@ import torch
 from diffusers.utils.import_utils import is_xformers_available
 from PIL import Image
 import numpy as np
+import pprint
 
 batch = torch.load("E:\\sd1_latents\\latent_cache_your_sd1_finetune_0.pt")
 
@@ -35,13 +36,6 @@ batch = torch.load("E:\\sd1_latents\\latent_cache_your_sd1_finetune_0.pt")
 from transformers import CLIPTokenizer
 tokenizer = CLIPTokenizer.from_pretrained("X:\sd1-5", subfolder="tokenizer")
 
+pprint.pp(batch["tokens"], indent=4)
 for partial in batch["tokens"]:
 	decoded_texts = tokenizer.batch_decode(partial, skip_special_tokens=True)
-	pos = 0
-	for text in decoded_texts:
-		if text == "":
-			print(pos, "EOS padded")
-		else:
-			print(pos, text)
-		pos += 1
-	print("")

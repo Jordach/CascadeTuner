@@ -3,8 +3,9 @@ import torch
 import math
 
 def tokenize_respecting_boundaries(tokenizer, captions):
-	tokenized_captions = []
-	attention_masks = []
+	max_chunks = 0
+	all_caption_chunks = []
+	all_attention_chunks = []
 	
 	for caption in captions:
 		caption_chunks = []
@@ -22,26 +23,37 @@ def tokenize_respecting_boundaries(tokenizer, captions):
 			if len(current_chunk) + len(word_tokens) > 75:
 				if current_chunk:
 					padded_chunk = current_chunk + [tokenizer.pad_token_id] * (75 - len(current_chunk))
-					caption_chunks.append(torch.tensor(padded_chunk))
-					attention_chunks.append(torch.tensor([1] * len(current_chunk) + [0] * (75 - len(current_chunk))))
+					caption_chunks.append(padded_chunk)
+					attention_chunks.append([1] * len(current_chunk) + [0] * (75 - len(current_chunk)))
 				current_chunk = word_tokens
 			else:
 				current_chunk.extend(word_tokens)
 			
 			# If the current chunk is full or overflowing, add it to the list and start a new one
 			while len(current_chunk) >= 75:
-				caption_chunks.append(torch.tensor(current_chunk[:75]))
-				attention_chunks.append(torch.tensor([1] * 75))
+				caption_chunks.append(current_chunk[:75])
+				attention_chunks.append([1] * 75)
 				current_chunk = current_chunk[75:]
 		
 		# Add any remaining tokens in the last chunk
 		if current_chunk:
 			padded_chunk = current_chunk + [tokenizer.pad_token_id] * (75 - len(current_chunk))
-			caption_chunks.append(torch.tensor(padded_chunk))
-			attention_chunks.append(torch.tensor([1] * len(current_chunk) + [0] * (75 - len(current_chunk))))
+			caption_chunks.append(padded_chunk)
+			attention_chunks.append([1] * len(current_chunk) + [0] * (75 - len(current_chunk)))
 		
-		tokenized_captions.append(torch.stack(caption_chunks))
-		attention_masks.append(torch.stack(attention_chunks))
+		all_caption_chunks.append(caption_chunks)
+		all_attention_chunks.append(attention_chunks)
+		max_chunks = max(max_chunks, len(caption_chunks))
+	
+	# Pad all captions to have the same number of chunks
+	for i in range(len(all_caption_chunks)):
+		while len(all_caption_chunks[i]) < max_chunks:
+			all_caption_chunks[i].append([tokenizer.pad_token_id] * 75)
+			all_attention_chunks[i].append([0] * 75)
+
+	 # Convert to tensors and stack
+	tokenized_captions = torch.tensor(all_caption_chunks)
+	attention_masks = torch.tensor(all_attention_chunks)
 	
 	return tokenized_captions, attention_masks
 
