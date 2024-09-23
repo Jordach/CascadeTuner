@@ -2,7 +2,7 @@ import torch
 import random
 import math
 from torch.utils.data import Dataset
-from tokeniser_util import tokenize_respecting_boundaries, pad_tokens
+from tokeniser_util import tokenize_respecting_boundaries
 
 # This is known to work on multi-GPU setups
 class SD1CachedLatents(Dataset):
