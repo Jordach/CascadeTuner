@@ -2,55 +2,70 @@ import re
 import torch
 import math
 
-def tokenize_respecting_boundaries(tokenizer, captions):
+def tokenize_respecting_boundaries(tokenizer, captions, max_length=75):
+	batch_size = len(captions)
+	all_tokenized_captions = []
+	all_attention_masks = []
 	max_chunks = 0
-	all_caption_chunks = []
-	all_attention_chunks = []
 
 	for caption in captions:
-		caption_chunks = []
-		attention_chunks = []
-		current_chunk = []
-		
 		words = re.findall(r'\S+|\s+', caption)
-		
+		tokenized_caption = []
+		attention_mask = []
+		current_chunk = []
+		current_attention = []
+
 		for word in words:
 			word_tokens = tokenizer.encode(word.strip(), add_special_tokens=False)
 			
-			if len(current_chunk) + len(word_tokens) > 75:
-				if current_chunk:
-					padded_chunk = current_chunk + [tokenizer.pad_token_id] * (75 - len(current_chunk))
-					caption_chunks.append(padded_chunk)
-					attention_chunks.append([1] * len(current_chunk) + [0] * (75 - len(current_chunk)))
+			if len(current_chunk) + len(word_tokens) > max_length:
+				# Pad and add the current chunk
+				padded_chunk = current_chunk + [tokenizer.pad_token_id] * (max_length - len(current_chunk))
+				tokenized_caption.append(padded_chunk)
+				attention_mask.append(current_attention + [0] * (max_length - len(current_attention)))
+				
+				# Start a new chunk
 				current_chunk = word_tokens
+				current_attention = [1] * len(word_tokens)
 			else:
 				current_chunk.extend(word_tokens)
-			
-			while len(current_chunk) >= 75:
-				caption_chunks.append(current_chunk[:75])
-				attention_chunks.append([1] * 75)
-				current_chunk = current_chunk[75:]
-		
+				current_attention.extend([1] * len(word_tokens))
+
+			# Handle chunks that exceed max_length
+			while len(current_chunk) >= max_length:
+				tokenized_caption.append(current_chunk[:max_length])
+				attention_mask.append([1] * max_length)
+				current_chunk = current_chunk[max_length:]
+				current_attention = current_attention[max_length:]
+
+		# Add any remaining tokens in the last chunk
 		if current_chunk:
-			padded_chunk = current_chunk + [tokenizer.pad_token_id] * (75 - len(current_chunk))
-			caption_chunks.append(padded_chunk)
-			attention_chunks.append([1] * len(current_chunk) + [0] * (75 - len(current_chunk)))
-		
-		all_caption_chunks.append(caption_chunks)
-		all_attention_chunks.append(attention_chunks)
-		max_chunks = max(max_chunks, len(caption_chunks))
+			padded_chunk = current_chunk + [tokenizer.pad_token_id] * (max_length - len(current_chunk))
+			tokenized_caption.append(padded_chunk)
+			attention_mask.append(current_attention + [0] * (max_length - len(current_attention)))
+
+		all_tokenized_captions.append(tokenized_caption)
+		all_attention_masks.append(attention_mask)
+		max_chunks = max(max_chunks, len(tokenized_caption))
 
 	# Pad all captions to have the same number of chunks
-	for i in range(len(all_caption_chunks)):
-		while len(all_caption_chunks[i]) < max_chunks:
-			all_caption_chunks[i].append([tokenizer.pad_token_id] * 75)
-			all_attention_chunks[i].append([0] * 75)
+	for i in range(batch_size):
+		while len(all_tokenized_captions[i]) < max_chunks:
+			all_tokenized_captions[i].append([tokenizer.pad_token_id] * max_length)
+			all_attention_masks[i].append([0] * max_length)
 
-	# Convert to tensors and stack
-	tokenized_captions = torch.tensor(all_caption_chunks)
-	attention_masks = torch.tensor(all_attention_chunks)
-	
-	return tokenized_captions, attention_masks
+	# Rearrange and convert to list of tensors
+	tokenized_captions_list = []
+	attention_masks_list = []
+
+	for chunk_idx in range(max_chunks):
+		chunk_tokens = [all_tokenized_captions[i][chunk_idx] for i in range(batch_size)]
+		chunk_attention = [all_attention_masks[i][chunk_idx] for i in range(batch_size)]
+		
+		tokenized_captions_list.append(torch.tensor(chunk_tokens))
+		attention_masks_list.append(torch.tensor(chunk_attention))
+
+	return tokenized_captions_list, attention_masks_list
 
 def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokenizer, settings, batch_size):
 	text_embeddings = None
