@@ -1,7 +1,7 @@
 import torch
 import random
 import math
-from torch import Dataset
+from torch.utils.data import Dataset
 from tokeniser_util import tokenize_respecting_boundaries, pad_tokens
 
 # This is known to work on multi-GPU setups
