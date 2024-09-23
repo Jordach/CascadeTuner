@@ -42,7 +42,7 @@ def main():
     args = parse_args()
     
     # Load settings from YAML config
-    with open(args.yaml_config, "r") as f:
+    with open(args.yaml, "r") as f:
         settings = yaml.safe_load(f)
 
     accelerator = Accelerator(
