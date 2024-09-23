@@ -20,7 +20,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
 from dataset_util import BucketWalker
 from bucketeer import Bucketeer
-from transformers import AutoTokenizer, CLIPTextModel
+from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer
 from tokeniser_util import get_text_embeds
 from sd1_util import SD1CachedLatents
 from core_util import create_folder_if_necessary
@@ -68,7 +68,7 @@ def main():
     set_seed(settings["seed"])
 
     # Load Tokeniser
-    tokenizer = AutoTokenizer.from_pretrained(settings["clip_tokeniser"])
+    tokenizer = CLIPTokenizer.from_pretrained(settings["model_name"], subfolder="tokenizer")
 
     pre_dataset = []
 
