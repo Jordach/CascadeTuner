@@ -41,6 +41,13 @@ grad_accum_steps: 1
 # How many training steps can pass before saving a copy of the model?
 save_every: 5000
 
+# On Linux, this will enable Pytorch specific optimisations for Ampere or later GPUs. (RTX 30x0 or A100)
+# This option has no effect on Windows 10 and 11.
+use_pytorch_cross_attention: true
+
+# Whether to use xformers over pytorch's flash attention
+use_xformers: false
+
 # The learning rate.
 lr: 5.0e-6
 text_lr: 5.0e-6
