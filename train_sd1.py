@@ -45,6 +45,8 @@ def main():
     with open(args.yaml, "r") as f:
         settings = yaml.safe_load(f)
 
+    settings["tag_shuffling"] = False
+
     accelerator = Accelerator(
        gradient_accumulation_steps=settings["grad_accum_steps"],
        log_with="tensorboard",
