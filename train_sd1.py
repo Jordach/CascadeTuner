@@ -139,7 +139,7 @@ def main():
         aspects = batch[0]["aspects"]
         img = batch[0]["images"]
         for i in range(0, len(batch[0]["images"])):
-            images.append(auto_bucketer.load_and_resize(img[i], float(aspects[i])))
+            images.append(auto_bucketer(img[i]))
         images = torch.stack(images)
         images = images.to(memory_format=torch.contiguous_format)
         images = images.to(accelerator.device)
