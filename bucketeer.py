@@ -46,7 +46,7 @@ class Bucketeer():
 				lx, ly = self.test_resize(base_size, base_size/r, emit_print=False)
 			else:
 				lx, ly = self.test_resize(base_size*r, base_size, emit_print=False)
-			latent_size = f"{lx}x{ly}"
+			latent_size = f"{int(lx)}x{int(ly)}"
 			if latent_size not in latent_res:
 				latent_res[latent_size] = True
 				new_ratios.append(r)
