@@ -127,7 +127,6 @@ def main():
         density=settings["image_size"],
         factor=8,
         aspect_ratios=settings["multi_aspect_ratio"],
-        reverse_list=False,
         transforms=torchvision.transforms.ToTensor(),
     )
     #auto_bucketer.clean_up_duplicate_buckets(emit_print=True)
