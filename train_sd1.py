@@ -353,7 +353,7 @@ def main():
                     accelerator.backward(loss)
 
                     if accelerator.sync_gradients:
-                        grad_norm = accelerator.clip_grad_norm(itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters(), 1.0)
+                        grad_norm = accelerator.clip_grad_norm_(itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters(), 1.0)
                         last_grad_norm = grad_norm.mean().item()
                     
                     unet_optimizer.step()
