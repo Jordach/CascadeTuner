@@ -221,7 +221,7 @@ def main():
                     print(f"Original Cached Step Count: {len(latent_cache)}")
                 total_batches = int((len(latent_cache)-1) * settings["dropout"])
 
-                dropouts = random.sample(latent_cache.get_cache_list(), total_batches)
+                dropouts = random.sample(latent_cache.get_batch_list(), total_batches)
                 for batch in dropouts:
                     latent_cache.add_cache_location(batch[0], True)
 
