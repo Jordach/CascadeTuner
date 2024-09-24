@@ -350,7 +350,7 @@ def main():
                     loss = loss.mean()
 
                     del timesteps, noise, latents, noisy_latents, text_embeds
-                    accelerator.backwards(loss)
+                    accelerator.backward(loss)
 
                     if accelerator.sync_gradients:
                         grad_norm = accelerator.clip_grad_norm(itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters(), 1.0)
