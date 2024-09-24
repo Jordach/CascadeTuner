@@ -19,7 +19,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
 from dataset_util import BucketWalker
-from bucketeer import Bucketeer
+from bucketeer import Bucketeer, StrictBucketeer
 from transformers import CLIPTextModel, CLIPTokenizer
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from optim_util import get_optimizer, step_adafactor
@@ -123,16 +123,14 @@ def main():
         for batch in tqdm(pre_dataloader, desc="Dataloader Warmup"):
             dataset.append(batch)
 
-    auto_bucketer = Bucketeer(
-        density=settings["image_size"] ** 2,
+    auto_bucketer = StrictBucketeer(
+        base_size=settings["image_size"],
         factor=8,
         ratios=settings["multi_aspect_ratio"],
-        p_random_ratio=0,
         reverse_list=False,
         transforms=torchvision.transforms.ToTensor(),
-        settings=settings
     )
-    auto_bucketer.clean_up_duplicate_buckets(emit_print=True)
+    #auto_bucketer.clean_up_duplicate_buckets(emit_print=True)
 
     def collate(batch):
         images = []

@@ -159,3 +159,88 @@ class Bucketeer():
 		if emit_print:
 			print(f"image: {int(w)}x{int(h)}, resize: {rs_w}x{rs_h}, crop: {crop_size[0]}x{crop_size[1]}, latent: {latent_w}x{latent_h}, ratio: {actual_ratio:.4f}, resize ratio: {rs_w/rs_h:.4f}")
 		return latent_w, latent_h
+
+class StrictBucketeer:
+	def __init__(
+		self,
+		base_size=256,
+		factor=8,
+		ratios=[1/1, 1/2, 3/4, 3/5, 4/5, 6/9, 9/16],
+		reverse_list=True,
+		crop_mode='center',
+		transforms=None
+	):
+		assert crop_mode in ['center', 'random', 'smart']
+		self.crop_mode = crop_mode
+		self.base_size = base_size
+		self.factor = factor
+		
+		# Generate ratios
+		self.ratios = ratios
+		if reverse_list:
+			for r in list(ratios):
+				if 1/r not in self.ratios:
+					self.ratios.append(1/r)
+		
+		# Generate strict bucket sizes
+		self.sizes = self._generate_bucket_sizes()
+		
+		self.smartcrop = SmartCrop(base_size) if self.crop_mode == 'smart' else None
+		self.transforms = transforms
+
+	def _generate_bucket_sizes(self):
+		sizes = []
+		for ratio in self.ratios:
+			if ratio >= 1:
+				w = self.base_size
+				h = int(self.base_size / ratio)
+			else:
+				h = self.base_size
+				w = int(self.base_size * ratio)
+			
+			# Ensure dimensions are multiples of factor
+			w = (w // self.factor) * self.factor
+			h = (h // self.factor) * self.factor
+			
+			sizes.append((w, h))
+		return sizes
+
+	def get_closest_size(self, w, h):
+		aspect_ratio = w / h
+		closest_idx = min(range(len(self.ratios)), 
+							key=lambda i: abs(self.ratios[i] - aspect_ratio))
+		return self.sizes[closest_idx]
+
+	def load_and_resize(self, item):
+		with warnings.catch_warnings():
+			warnings.simplefilter("ignore")
+			image = Image.open(item).convert("RGB")
+			w, h = image.size
+			img = self.transforms(image)
+			del image
+
+			# Get the closest bucket size
+			target_size = self.get_closest_size(w, h)
+			
+			# Resize image to fit the target size while maintaining aspect ratio
+			img = torchvision.transforms.functional.resize(
+				img, 
+				target_size,
+				interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
+				antialias=True
+			)
+			
+			# Crop if necessary
+			if img.shape[-2:] != target_size:
+				if self.crop_mode == 'center':
+					img = torchvision.transforms.functional.center_crop(img, target_size)
+				elif self.crop_mode == 'random':
+					img = torchvision.transforms.RandomCrop(target_size)(img)
+				elif self.crop_mode == 'smart':
+					self.smartcrop.output_size = target_size
+					img = self.smartcrop(img)
+			
+			return img
+
+	def __call__(self, item):
+		return self.load_and_resize(item)
