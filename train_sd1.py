@@ -124,7 +124,7 @@ def main():
             dataset.append(batch)
 
     auto_bucketer = StrictBucketeer(
-        density=settings["image_size"],
+        density=settings["image_size"]**2,
         factor=8,
         aspect_ratios=settings["multi_aspect_ratio"],
         transforms=torchvision.transforms.ToTensor(),
