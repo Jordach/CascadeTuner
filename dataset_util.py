@@ -126,10 +126,6 @@ class BucketWalker():
 		
 		for aspect in aspects:
 			actual_aspect = aspect
-			float_aspect = float(aspect)
-			# Also convert landscape/horizontal aspects to vertical ones
-			if float_aspect > 1:
-				actual_aspect = f"{1/float_aspect:.2f}"
 			
 			if actual_aspect not in buckets:
 				buckets[actual_aspect] = True
