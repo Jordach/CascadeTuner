@@ -202,12 +202,12 @@ class StrictBucketeer:
 		target_size = self.buckets[ratio_str]
 		
 		# Determine resize dimensions (resize smallest side to match target)
-		# if w <= h:
-		# 	resize_size = (target_size[0], int(h * target_size[0] / w))
-		# else:
-		# 	resize_size = (int(w * target_size[1] / h), target_size[1])
+		if w <= h:
+			resize_size = (target_size[0], int(h * target_size[0] / w))
+		else:
+			resize_size = (int(w * target_size[1] / h), target_size[1])
 		
-		return target_size
+		return resize_size, target_size
 
 	def load_and_resize(self, item):
 		with warnings.catch_warnings():
@@ -218,8 +218,8 @@ class StrictBucketeer:
 			del image
 
 			# Get the resize and crop sizes
-			crop_size = self.get_resize_and_crop_sizes(w, h)
-			resize_size = min(crop_size)
+			resize_size, crop_size = self.get_resize_and_crop_sizes(w, h)
+			#resize_size = min(crop_size)
 			
 			# Resize image
 			img = torchvision.transforms.functional.resize(
