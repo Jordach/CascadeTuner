@@ -165,8 +165,7 @@ class StrictBucketeer:
 		self,
 		base_size=256,
 		factor=8,
-		ratios=[1/1, 1/2, 3/4, 3/5, 4/5, 6/9, 9/16],
-		reverse_list=True,
+		aspect_ratios=[],  # Pre-calculated w/h ratios
 		crop_mode='center',
 		transforms=None
 	):
@@ -175,22 +174,16 @@ class StrictBucketeer:
 		self.base_size = base_size
 		self.factor = factor
 		
-		# Generate ratios
-		self.ratios = ratios
-		if reverse_list:
-			for r in list(ratios):
-				if 1/r not in self.ratios:
-					self.ratios.append(1/r)
-		
-		# Generate strict bucket sizes
-		self.sizes = self._generate_bucket_sizes()
+		# Generate bucket sizes and store in a dict
+		self.buckets = self._generate_bucket_sizes(aspect_ratios)
 		
 		self.smartcrop = SmartCrop(base_size) if self.crop_mode == 'smart' else None
 		self.transforms = transforms
 
-	def _generate_bucket_sizes(self):
-		sizes = []
-		for ratio in self.ratios:
+	def _generate_bucket_sizes(self, aspect_ratios):
+		buckets = {}
+		for ratio in aspect_ratios:
+			ratio_str = f"{ratio:.2f}"
 			if ratio >= 1:
 				w = self.base_size
 				h = int(self.base_size / ratio)
@@ -202,42 +195,51 @@ class StrictBucketeer:
 			w = (w // self.factor) * self.factor
 			h = (h // self.factor) * self.factor
 			
-			sizes.append((w, h))
-		return sizes
+			buckets[ratio_str] = (w, h)
+		return buckets
 
-	def get_closest_size(self, w, h):
+	def get_resize_and_crop_sizes(self, w, h):
 		aspect_ratio = w / h
-		closest_idx = min(range(len(self.ratios)), 
-							key=lambda i: abs(self.ratios[i] - aspect_ratio))
-		return self.sizes[closest_idx]
+		ratio_str = f"{aspect_ratio:.2f}"
+		
+		closest_ratio = min(self.buckets.keys(), key=lambda x: abs(float(x) - aspect_ratio))
+		target_size = self.buckets[closest_ratio]
+		
+		# Determine resize dimensions (resize smallest side to match target)
+		if w <= h:
+			resize_size = (target_size[0], int(h * target_size[0] / w))
+		else:
+			resize_size = (int(w * target_size[1] / h), target_size[1])
+		
+		return resize_size, target_size
 
 	def load_and_resize(self, item):
 		with warnings.catch_warnings():
 			warnings.simplefilter("ignore")
 			image = Image.open(item).convert("RGB")
 			w, h = image.size
-			img = self.transforms(image)
+			img = self.transforms(image) if self.transforms else torchvision.transforms.ToTensor()(image)
 			del image
 
-			# Get the closest bucket size
-			target_size = self.get_closest_size(w, h)
+			# Get the resize and crop sizes
+			resize_size, crop_size = self.get_resize_and_crop_sizes(w, h)
 			
-			# Resize image to fit the target size while maintaining aspect ratio
+			# Resize image
 			img = torchvision.transforms.functional.resize(
 				img, 
-				target_size,
+				resize_size,
 				interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
 				antialias=True
 			)
 			
 			# Crop if necessary
-			if img.shape[-2:] != target_size:
+			if img.shape[-2:] != crop_size:
 				if self.crop_mode == 'center':
-					img = torchvision.transforms.functional.center_crop(img, target_size)
+					img = torchvision.transforms.functional.center_crop(img, crop_size)
 				elif self.crop_mode == 'random':
-					img = torchvision.transforms.RandomCrop(target_size)(img)
+					img = torchvision.transforms.RandomCrop(crop_size)(img)
 				elif self.crop_mode == 'smart':
-					self.smartcrop.output_size = target_size
+					self.smartcrop.output_size = crop_size
 					img = self.smartcrop(img)
 			
 			return img
