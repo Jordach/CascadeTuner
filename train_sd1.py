@@ -223,7 +223,7 @@ def main():
 
                 dropouts = random.sample(latent_cache.get_batch_list(), total_batches)
                 for batch in dropouts:
-                    latent_cache.add_cache_location(batch[0], True)
+                    latent_cache.add_latent_batch(batch[0], True)
 
                 if accelerator.is_main_process:
                     print(f"Duplicated {len(dropouts)} caches for caption dropout.")
