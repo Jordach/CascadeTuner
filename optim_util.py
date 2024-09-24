@@ -3,7 +3,38 @@
 
 import math
 import torch
-from torch import Tensor
+from torch import Tensor, optim
+import transformers
+
+def get_optimizer(optim_choice, settings):
+	optimizer_type = optim_choice.lower()
+	optimizer_kwargs = {}
+	if optimizer_type == "adamw":
+		optimizer = optim.AdamW
+	elif optimizer_type == "adamw8bit":
+		try:
+			import bitsandbytes as bnb
+		except ImportError:
+			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
+		optimizer = bnb.optim.AdamW8bit
+	elif optimizer_type == "compass":
+		try:
+			from compass_optimizer.compass import Compass
+			optimizer = Compass
+		except ImportError:
+			raise ImportError("Please git clone compass optimizer from https://github.com/lodestone-rock/compass_optimizer")
+	else: #AdaFactor
+		optimizer_kwargs["scale_parameter"] = False
+		optimizer_kwargs["relative_step"] = False
+		optimizer_kwargs["warmup_init"] = False
+		optimizer_kwargs["eps"] = [1e-30, 1e-3]
+		optimizer_kwargs["clip_threshold"] = 1.0
+		optimizer_kwargs["decay_rate"] = -0.8
+		optimizer_kwargs["weight_decay"] = 0
+		optimizer_kwargs["beta1"] = None
+		
+		optimizer = transformers.optimization.Adafactor
+	return optimizer, optimizer_kwargs
 
 def copy_stochastic_(target: Tensor, source: Tensor):
     """

@@ -1,8 +1,15 @@
 import torch
 import random
-import math
+import os
 from torch.utils.data import Dataset
 from tokeniser_util import tokenize_respecting_boundaries
+from zstd_util import load_torch_zstd
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel, CLIPTextModel, CLIPTokenizer
+
+def vae_encode(images, vae):
+	_images = images.to(dtype=vae.dtype)
+	latents = vae.encode(_images).latent_dist.sample()
+	return latents * 0.18215
 
 # This is known to work on multi-GPU setups
 class SD1CachedLatents(Dataset):
@@ -22,7 +29,14 @@ class SD1CachedLatents(Dataset):
 			random.shuffle(self.cache_paths)
 			self.accelerator.print("Cached Latents Shuffled.")
 
-		cache = torch.load(self.cache_paths[index][0], map_location=self.accelerator.device)
+		exts = os.path.splitext(self.cache_paths[index][0])
+		if exts[1] == ".pt":
+			cache = torch.load(self.cache_paths[index][0], map_location=self.accelerator.device)
+		elif exts[1] == ".zpt":
+			cache = load_torch_zstd(self.cache_paths[index][0], self.accelerator.device)
+		else:
+			raise ValueError(f"Unknown Latent Cache format for file: {self.cache_paths[index][0]}")
+		
 		if self.cache_paths[index][1]:
 			cache["dropout"] = True
 
@@ -50,3 +64,10 @@ class SD1CachedLatents(Dataset):
 	
 	def add_latent_batch(self, batch, dropout):
 		self.batches.append((batch, dropout))
+
+def save_sd1_pipeline(path, settings, accelerator, unet, text_model):
+	if accelerator.is_main_process:
+		pipeline = StableDiffusionPipeline.from_pretrained(settings["model_name"])
+		pipeline.unet = accelerator.unwrap_model(unet)
+		pipeline.text_encoder = accelerator.unwrap_model(text_model)
+		pipeline.save_pretrained(path)

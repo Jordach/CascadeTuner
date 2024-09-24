@@ -16,7 +16,7 @@ from gdf_util import GDF, EpsilonTarget, CosineSchedule, VPScaler, CosineTNoiseC
 from model_util import EfficientNetEncoder, StageC, StageC_SpectraOne, enable_checkpointing_for_stable_cascade_blocks
 from dataset_util import BucketWalker, CachedLatents, RegularLatents
 from xformers_util import convert_state_dict_mha_to_normal_attn
-from optim_util import step_adafactor
+from optim_util import step_adafactor, get_optimizer
 from bucketeer import Bucketeer
 from torch.utils.checkpoint import checkpoint
 from diffusers.optimization import get_scheduler
@@ -46,30 +46,6 @@ info = {
 	#"ema_loss": "",
 	#"adaptive_loss": {}
 }
-
-def get_optimizer(optim_choice, settings):
-	optimizer_type = optim_choice.lower()
-	optimizer_kwargs = {}
-	if optimizer_type == "adamw":
-		optimizer = optim.AdamW
-	elif optimizer_type == "adamw8bit":
-		try:
-			import bitsandbytes as bnb
-		except ImportError:
-			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
-		optimizer = bnb.optim.AdamW8bit
-	else: #AdaFactor
-		optimizer_kwargs["scale_parameter"] = False
-		optimizer_kwargs["relative_step"] = False
-		optimizer_kwargs["warmup_init"] = False
-		optimizer_kwargs["eps"] = [1e-30, 1e-3]
-		optimizer_kwargs["clip_threshold"] = 1.0
-		optimizer_kwargs["decay_rate"] = -0.8
-		optimizer_kwargs["weight_decay"] = 0
-		optimizer_kwargs["beta1"] = None
-		
-		optimizer = transformers.optimization.Adafactor
-	return optimizer, optimizer_kwargs
 
 def load_model(model, model_id=None, full_path=None, strict=True, settings=None, accelerator=None):
 	if model_id is not None and full_path is None:
@@ -617,7 +593,7 @@ def main():
 			# Reset the LR to the new values
 			for param in text_optimizer.param_groups:
 				param["lr"] = settings["text_lr"]
-		elif settings["generator_optim"] == "_____no_path.pt":
+		elif settings["text_enc_optim"] == "_____no_path.pt":
 			pass
 		else:
 			raise ValueError("Cannot load Text Encoder optimizer state from disk, does it exist?")
@@ -625,7 +601,7 @@ def main():
 		text_scheduler = get_scheduler(
 			settings["text_lr_scheduler"],
 			optimizer=text_optimizer,
-			num_warmup_steps=settings["warmup_updates"] * settings["grad_accum_steps"],
+			num_warmup_steps=settings["warmup_updates"],
 			num_training_steps=len(dataloader) * settings["num_epochs"]
 		)
 

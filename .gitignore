@@ -5,3 +5,5 @@ output/
 cache/
 .vscode/
 venv/
+compass_optimizer/*
+compass_optimizer/

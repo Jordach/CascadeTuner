@@ -36,6 +36,27 @@ class Bucketeer():
 		self.settings = settings
 		self.factor = factor
 
+	def clean_up_duplicate_buckets(self, emit_print=False):
+		new_ratios = []
+		latent_res = {}
+		# Deduplicate using the fact that dicts are hashmaps
+		for r in self.ratios:
+			base_size = math.sqrt(self.density*2)
+			if r < 1:
+				lx, ly = self.test_resize(base_size, base_size/r, emit_print=False)
+			else:
+				lx, ly = self.test_resize(base_size*r, base_size, emit_print=False)
+			latent_size = f"{lx}x{ly}"
+			if latent_size not in latent_res:
+				latent_res[latent_size] = True
+				new_ratios.append(r)
+			elif emit_print:
+				print(f"Detected duplicate ratio: {r}, {latent_size}")
+		
+		# Finally
+		self.ratios = new_ratios
+		self.sizes = [(int(((self.density/r)**0.5//self.factor)*self.factor), int(((self.density*r)**0.5//self.factor)*self.factor)) for r in new_ratios]
+
 	def get_closest_size(self, x, y):
 		if self.p_random_ratio > 0 and np.random.rand() < self.p_random_ratio:
 			best_size_idx = np.random.randint(len(self.ratios))

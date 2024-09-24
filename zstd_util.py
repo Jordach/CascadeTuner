@@ -17,7 +17,7 @@ def save_torch_zstd(obj, file_path, compression_level=3):
     with ZstdFile(file_path, mode='wb', level_or_option=compression_level) as f:
         f.write(buffer.getvalue())
 
-def load_torch_zstd(file_path):
+def load_torch_zstd(file_path, map_loc):
     """
     Load a PyTorch object from a Zstd compressed file.
     
@@ -28,4 +28,4 @@ def load_torch_zstd(file_path):
         buffer = io.BytesIO(f.read())
     
     buffer.seek(0)
-    return torch.load(buffer)
+    return torch.load(buffer, map_location=map_loc)

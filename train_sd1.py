@@ -9,6 +9,8 @@ import random
 import torch
 import torch.nn.functional as F
 import torchvision
+import transformers
+import itertools
 from torch.utils.data import DataLoader
 
 from accelerate import Accelerator
@@ -22,16 +24,14 @@ from dataset_util import BucketWalker
 from bucketeer import Bucketeer
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
-from sd1_util import SD1CachedLatents
+from optim_util import get_optimizer, step_adafactor
+from sd1_util import SD1CachedLatents, vae_encode, save_sd1_pipeline
 from core_util import create_folder_if_necessary
 from zstd_util import save_torch_zstd, load_torch_zstd
+from contextlib import nullcontext
+
 
 logger = get_logger(__name__)
-
-def vae_encode(images, vae):
-    _images = images.to(dtype=vae.dtype)
-    latents = vae.encode(_images).latent_dist.sample()
-    return latents * 0.18215
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Custom training script for SD1.")
@@ -48,6 +48,8 @@ def main():
         settings = yaml.safe_load(f)
 
     settings["tag_shuffling"] = False
+    settings["unet_optim"] = "_____no_path.pt"
+    settings["text_enc_optim"] = "_____no_path.pt"
 
     accelerator = Accelerator(
        gradient_accumulation_steps=settings["grad_accum_steps"],
@@ -129,6 +131,7 @@ def main():
         transforms=torchvision.transforms.ToTensor(),
         settings=settings
     )
+    auto_bucketer.clean_up_duplicate_buckets(emit_print=True)
 
     def collate(batch):
         images = []
@@ -199,7 +202,6 @@ def main():
             save_torch_zstd(batch, os.path.join(settings["latent_cache_location"], file_name))
             latent_cache.add_latent_batch(os.path.join(settings["latent_cache_location"], file_name), False)
             step += 1
-            break
         if args.cache_only:
             return 0
     elif settings["use_latent_cache"]:
@@ -234,8 +236,150 @@ def main():
         dataloader = torch.utils.data.DataLoader(
             latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, 
         )
-    # We don't need the VAE anymore - so just delete it from memory
-    del vae
+        # We don't need the VAE anymore - so just delete it from memory
+        del vae
+        vae = None
+
+    noise_scheduler = DDPMScheduler.from_pretrained(settings["model_name"], subfolder="scheduler")
+    unet = UNet2DConditionModel.from_pretrained(settings["model_name"], subfolder="unet")
+    text_model = CLIPTextModel.from_pretrained(settings["model_name"], subfolder="text_encoder")
+
+    # Unet optimizer and LR scheduler:
+    unet_optimizer, unet_optimizer_kwargs = get_optimizer(settings["optimizer_type"], settings)
+    unet_optimizer = unet_optimizer((unet.parameters()), lr=settings["lr"], **unet_optimizer_kwargs)
+    if os.path.exists(settings["unet_optim"]):
+        unet_optimizer.load_state_dict(torch.load(settings["unet_optim"]))
+    elif settings["unet_optim"] == "_____no_path.pt":
+        pass
+    else:
+        raise ValueError("Cannot load Unet optimizer from disk, does it exist?")
+
+    if settings["optimizer_type"] == "adafactorstoch":
+        unet_optimizer.step = step_adafactor.__get__(unet_optimizer, transformers.optimization.Adafactor)
+    
+    unet_scheduler = get_scheduler(
+        settings["lr_scheduler"],
+        optimizer=unet_optimizer,
+        num_warmup_steps=settings["warmup_updates"],
+        num_training_steps=len(dataloader) * settings["num_epochs"]
+    )
+
+    # Text Encoder optimizer and LR scheduler:
+    text_optimizer = ""
+    text_scheduler = ""
+
+    if settings["train_text_encoder"]:
+        text_optimizer, text_optimizer_kwargs = get_optimizer(settings["text_optimizer_type"], settings)
+
+        text_optimizer = text_optimizer((text_model.parameters()), lr=settings["text_lr"], **text_optimizer_kwargs)
+        if os.path.exists(settings["text_enc_optim"]) and settings["text_enc_optim"] != "_____no_path.pt":
+            text_optimizer.load_state_dict(torch.load(settings["text_enc_optim"]))
+        elif settings["text_enc_optim"] == "_____no_path.pt":
+            pass
+        else:
+            raise ValueError("Cannot load Text Encoder optimizer state from disk, does it exist?")
+    
+        text_scheduler = get_scheduler(
+            settings["text_lr_scheduler"],
+            optimizer=text_optimizer,
+            num_warmup_steps=settings["warmup_updates"],
+            num_training_steps=len(dataloader) * settings["num_epochs"]
+        )
+
+    noise_scheduler = accelerator.prepare(noise_scheduler)
+    unet, text_model = accelerator.prepare(unet, text_model)
+    unet_optimizer, unet_scheduler = accelerator.prepare(unet_optimizer, unet_scheduler)
+    if settings["train_text_encoder"]:
+        text_optimizer, text_scheduler = accelerator.prepare(text_optimizer, text_scheduler)
+    
+    if accelerator.is_main_process:
+        accelerator.init_trackers("training")
+    
+    # Training Loop:
+    steps_bar = tqdm(range(len(dataloader)), desc="Steps to Epoch", disable=not accelerator.is_local_main_process)
+    epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs", disable=not accelerator.is_local_main_process)
+    total_steps = 0
+
+    torch.cuda.empty_cache()
+
+    # Handle text encoder context
+    text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
+    last_grad_norm = 0
+    unet.train()
+    if settings["train_text_encoder"]:
+        text_model.train()
+    
+    for e in epoch_bar:
+        current_step = 0
+        steps_bar.reset(total=len(dataloader))
+        for step, batch in enumerate(dataloader):
+            with accelerator.accumulate(unet, text_model) if settings["train_text_encoder"] else accelerator.accumulate(unet):
+                with accelerator.autocast():
+                    captions = batch[0]["tokens"]
+                    attn_mask = batch[0]["att_mask"]
+                    latents = batch[0]["latents"]
+                    dropout = batch[0]["dropout"]
+                    batch_size = len(batch[0]["captions"])
+
+                    noise = torch.randn_like(latents)
+                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (batch_size,), device=accelerator.device)
+                    timesteps = timesteps.long()
+
+                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
+                    with text_encoder_context:
+                        text_embeds = None
+                        text_pool = None
+                        text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
+                    
+                    model_pred = unet(noisy_latents, timesteps, text_embeds).sample
+                    target = noise
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean([1, 2, 3])
+                    loss = loss.mean()
+
+                    del timesteps, noise, latents, noisy_latents, text_embeds
+                    accelerator.backwards(loss)
+
+                    if accelerator.sync_gradients:
+                        grad_norm = accelerator.clip_grad_norm(itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters(), 1.0)
+                        last_grad_norm = grad_norm.mean().item()
+                    
+                    unet_optimizer.step()
+                    unet_scheduler.step()
+                    unet_optimizer.zero_grad()
+
+                    if settings["train_text_encoder"]:
+                        text_optimizer.step()
+                        text_scheduler.step()
+                        text_optimizer.zero_grad()
+                    
+                steps_bar.update(1)
+                current_step += 1
+                total_steps += 1
+
+            if accelerator.is_main_process:
+                logs = {
+                    "loss": loss.item(),
+                    "grad_norm": last_grad_norm,
+                    "lr": unet_scheduler.get_last_lr()[0]
+                }
+
+                if settings["train_text_encoder"]:
+                    logs["te_lr"] = text_scheduler.get_last_lr()[0]
+                
+                epoch_bar.set_postfix(logs)
+                accelerator.log(logs, step=total_steps)
+
+            if current_step % settings["save_every"] == 0:
+                save_sd1_pipeline(os.path.join(settings["checkpoint_path"], f"{settings['experiment_id']}_e{e}_s{current_step}"), settings, accelerator, unet, text_model)
+                accelerator.wait_for_everyone()
+        if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
+            save_sd1_pipeline(os.path.join(settings["checkpoint_path"], ), )
+            accelerator.wait_for_everyone()
+        
+        settings["seed"] += 1
+        set_seed(settings["seed"])
 
 if __name__ == "__main__":
     main()

@@ -21,3 +21,4 @@ torchtools @ git+https://github.com/pabloppp/pytorch-tools
 tensorboard
 diffusers
 pyzstd
+black
