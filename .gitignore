@@ -7,3 +7,4 @@ cache/
 venv/
 compass_optimizer/*
 compass_optimizer/
+decoded_image*

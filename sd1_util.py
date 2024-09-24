@@ -23,22 +23,22 @@ class SD1CachedLatents(Dataset):
 			self.accelerator.print("Will shuffle captions in Latent Caches.")
 
 	def __len__(self):
-		return len(self.cache_paths)
+		return len(self.batches)
 
 	def __getitem__(self, index):
 		if index == 0:
-			random.shuffle(self.cache_paths)
+			random.shuffle(self.batches)
 			self.accelerator.print("Cached Latents Shuffled.")
 
-		exts = os.path.splitext(self.cache_paths[index][0])
+		exts = os.path.splitext(self.batches[index][0])
 		if exts[1] == ".pt":
-			cache = torch.load(self.cache_paths[index][0], map_location=self.accelerator.device)
+			cache = torch.load(self.batches[index][0], map_location=self.accelerator.device)
 		elif exts[1] == ".zpt":
-			cache = load_torch_zstd(self.cache_paths[index][0], self.accelerator.device)
+			cache = load_torch_zstd(self.batches[index][0], self.accelerator.device)
 		else:
-			raise ValueError(f"Unknown Latent Cache format for file: {self.cache_paths[index][0]}")
+			raise ValueError(f"Unknown Latent Cache format for file: {self.batches[index][0]}")
 		
-		if self.cache_paths[index][1]:
+		if self.batches[index][1]:
 			cache["dropout"] = True
 
 		if self.tag_shuffle:
