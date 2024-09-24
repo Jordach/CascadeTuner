@@ -1,6 +1,4 @@
 import argparse
-import logging
-import math
 import os
 import yaml
 import numpy as np
@@ -16,18 +14,17 @@ from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
 from dataset_util import BucketWalker
 from bucketeer import Bucketeer
-from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTokenizer
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from optim_util import get_optimizer, step_adafactor
 from sd1_util import SD1CachedLatents, vae_encode, save_sd1_pipeline
-from core_util import create_folder_if_necessary
-from zstd_util import save_torch_zstd, load_torch_zstd
+from zstd_util import save_torch_zstd
 from contextlib import nullcontext
 
 
@@ -51,6 +48,11 @@ def main():
     settings["unet_optim"] = "_____no_path.pt"
     settings["text_enc_optim"] = "_____no_path.pt"
 
+    main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
+    if settings["dtype"] == "tf32":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
     accelerator = Accelerator(
        gradient_accumulation_steps=settings["grad_accum_steps"],
        log_with="tensorboard",
@@ -68,9 +70,7 @@ def main():
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(True)
     
-    # Set up logging and seed
-    logging.basicConfig(
-        format="%(asctime)s %(message)s", datefmt="%m/%d/%Y %I:%M:%S %p", level=logging.INFO)
+    # Set up seed
     set_seed(settings["seed"])
 
     # Load Tokeniser
@@ -172,17 +172,14 @@ def main():
     
     # Load the VAE
     vae = AutoencoderKL.from_pretrained(settings["model_name"], subfolder="vae")
-    vae.to(accelerator.device)
+    vae.to(accelerator.device, dtype=torch.float16)
     vae.requires_grad_(False)
     vae.enable_slicing()
     if is_xformers_available():
         try:
             vae.enable_xformers_memory_efficient_attention()
         except Exception as e:
-            logger.warning(
-                "Could not enable memory efficient attention. Make sure xformers is installed"
-                f" correctly and a GPU is available: {e}"
-            )
+            raise Exception("Could not enable memory efficient attention. Make sure xformers is installed")
 
     latent_cache = SD1CachedLatents(accelerator=accelerator, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"])
     # Create a latent cache if we're not going to load an existing one:
@@ -241,8 +238,19 @@ def main():
         vae = None
 
     noise_scheduler = DDPMScheduler.from_pretrained(settings["model_name"], subfolder="scheduler")
-    unet = UNet2DConditionModel.from_pretrained(settings["model_name"], subfolder="unet")
-    text_model = CLIPTextModel.from_pretrained(settings["model_name"], subfolder="text_encoder")
+    unet = UNet2DConditionModel.from_pretrained(settings["model_name"], subfolder="unet", main_dtype=main_dtype)
+    text_model = CLIPTextModel.from_pretrained(settings["model_name"], subfolder="text_encoder", main_dtype=main_dtype)
+    if settings["enable_gradient_checkpointing"]:
+        unet.enable_gradient_checkpointing()
+        if settings["train_text_encoder"]:
+            text_model.gradient_checkpointing_enable()
+
+    # Apply xformers to unet:
+    if is_xformers_available():
+        try:
+            unet.enable_xformers_memory_efficient_attention()
+        except Exception as e:
+            raise Exception("Could not enable memory efficient attention. Make sure xformers is installed")
 
     # Unet optimizer and LR scheduler:
     unet_optimizer, unet_optimizer_kwargs = get_optimizer(settings["optimizer_type"], settings)
@@ -305,9 +313,12 @@ def main():
     # Handle text encoder context
     text_encoder_context = nullcontext() if settings["train_text_encoder"] else torch.no_grad()
     last_grad_norm = 0
+    # Set whether models are in training mode
     unet.train()
     if settings["train_text_encoder"]:
         text_model.train()
+    else:
+        text_model.eval()
     
     for e in epoch_bar:
         current_step = 0
@@ -372,10 +383,12 @@ def main():
                 accelerator.log(logs, step=total_steps)
 
             if current_step % settings["save_every"] == 0:
-                save_sd1_pipeline(os.path.join(settings["checkpoint_path"], f"{settings['experiment_id']}_e{e}_s{current_step}"), settings, accelerator, unet, text_model)
+                step_path = os.path.join(settings["checkpoint_path"], f"{settings['experiment_id']}_e{e}_s{current_step}")
+                save_sd1_pipeline(step_path, settings, accelerator, unet, text_model)
                 accelerator.wait_for_everyone()
         if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
-            save_sd1_pipeline(os.path.join(settings["checkpoint_path"], ), )
+            epoch_path = os.path.join(settings["checkpoint_path"], f"{settings['experiment_id']}_e{e+1}")
+            save_sd1_pipeline(epoch_path, settings, accelerator, unet, text_model)
             accelerator.wait_for_everyone()
         
         settings["seed"] += 1

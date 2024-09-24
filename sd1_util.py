@@ -69,5 +69,6 @@ def save_sd1_pipeline(path, settings, accelerator, unet, text_model):
 	if accelerator.is_main_process:
 		pipeline = StableDiffusionPipeline.from_pretrained(settings["model_name"])
 		pipeline.unet = accelerator.unwrap_model(unet)
-		pipeline.text_encoder = accelerator.unwrap_model(text_model)
+		if settings["train_text_encoder"]:
+			pipeline.text_encoder = accelerator.unwrap_model(text_model)
 		pipeline.save_pretrained(path)
