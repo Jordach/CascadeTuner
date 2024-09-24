@@ -47,6 +47,7 @@ def main():
     settings["tag_shuffling"] = False
     settings["unet_optim"] = "_____no_path.pt"
     settings["text_enc_optim"] = "_____no_path.pt"
+    settings["multi_aspect_ratio"] = [1]
 
     main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
     if settings["dtype"] == "tf32":
