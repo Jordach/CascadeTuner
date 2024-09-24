@@ -4,7 +4,8 @@ import os
 from torch.utils.data import Dataset
 from tokeniser_util import tokenize_respecting_boundaries
 from zstd_util import load_torch_zstd
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel, CLIPTextModel, CLIPTokenizer
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from transformers import CLIPTextModel, CLIPTokenizer
 
 def vae_encode(images, vae):
 	_images = images.to(dtype=vae.dtype)
