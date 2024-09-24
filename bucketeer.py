@@ -63,7 +63,10 @@ class Bucketeer():
 		else:
 			w, h = x, y
 			best_size_idx = np.argmin([abs(w/h-r) for r in self.ratios])
-		return self.sizes[best_size_idx]
+		
+		size = self.sizes[best_size_idx]
+		return (round(size[0] / self.factor) * self.factor, 
+				round(size[1] / self.factor) * self.factor)
 
 	def get_resize_size(self, orig_size, tgt_size):
 		if (tgt_size[1]/tgt_size[0] - 1) * (orig_size[1]/orig_size[0] - 1) >= 0:
@@ -87,13 +90,20 @@ class Bucketeer():
 
 			# Get crop and resizing info for the bucket's ratio
 			crop_size = self.get_closest_size(w, h)
+			crop_size = (round(crop_size[0] / self.factor) * self.factor, 
+						round(crop_size[1] / self.factor) * self.factor)
+			
 			resize_size = self.get_resize_size(img.shape[-2:], crop_size)
+			resize_size = (round(resize_size / self.factor) * self.factor, 
+						round(resize_size / self.factor) * self.factor)
 			
 			# Resize image
-			if self.interpolate_nearest:
-				img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.NEAREST)
-			else:
-				img = torchvision.transforms.functional.resize(img, resize_size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR, antialias=True)
+			img = torchvision.transforms.functional.resize(
+				img, 
+				resize_size, 
+				interpolation=torchvision.transforms.InterpolationMode.BILINEAR, 
+				antialias=True
+			)
 			
 			# Crop image to target dimensions
 			if self.crop_mode == 'center':
@@ -105,6 +115,15 @@ class Bucketeer():
 				img = self.smartcrop(img)
 			else:
 				img = torchvision.transforms.functional.center_crop(img, crop_size)
+			
+			# Ensure final size is correct
+			if img.shape[-2:] != crop_size:
+				img = torchvision.transforms.functional.resize(
+					img, 
+					crop_size, 
+					interpolation=torchvision.transforms.InterpolationMode.BILINEAR, 
+					antialias=True
+				)
 			
 			# file_path = f"{self.settings['checkpoint_path']}/{self.settings['experiment_id']}/dataset_debug.csv"
 			# with open(file_path, "a") as f:
