@@ -328,7 +328,7 @@ def main():
                 with accelerator.autocast():
                     captions = batch[0]["tokens"]
                     attn_mask = batch[0]["att_mask"]
-                    latents = batch[0]["latents"]
+                    latents = batch[0]["vae_encoded"]
                     dropout = batch[0]["dropout"]
                     batch_size = len(batch[0]["captions"])
 
