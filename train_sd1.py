@@ -124,7 +124,7 @@ def main():
             dataset.append(batch)
 
     auto_bucketer = StrictBucketeer(
-        base_size=settings["image_size"],
+        density=settings["image_size"],
         factor=8,
         ratios=settings["multi_aspect_ratio"],
         reverse_list=False,

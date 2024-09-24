@@ -163,7 +163,7 @@ class Bucketeer():
 class StrictBucketeer:
 	def __init__(
 		self,
-		base_size=256,
+		density=256*256,
 		factor=8,
 		aspect_ratios=[],  # Pre-calculated w/h ratios
 		crop_mode='center',
@@ -171,30 +171,26 @@ class StrictBucketeer:
 	):
 		assert crop_mode in ['center', 'random', 'smart']
 		self.crop_mode = crop_mode
-		self.base_size = base_size
+		self.density = density
 		self.factor = factor
 		
 		# Generate bucket sizes and store in a dict
 		self.buckets = self._generate_bucket_sizes(aspect_ratios)
 		
-		self.smartcrop = SmartCrop(base_size) if self.crop_mode == 'smart' else None
+		self.smartcrop = SmartCrop(int(density**0.5)) if self.crop_mode == 'smart' else None
 		self.transforms = transforms
 
 	def _generate_bucket_sizes(self, aspect_ratios):
 		buckets = {}
 		for ratio in aspect_ratios:
-			ratio_str = f"{ratio:.2f}"
-			if ratio >= 1:
-				w = self.base_size
-				h = int(self.base_size / ratio)
-			else:
-				h = self.base_size
-				w = int(self.base_size * ratio)
+			w = int(((self.density/ratio)**0.5//self.factor)*self.factor)
+			h = int(((self.density*ratio)**0.5//self.factor)*self.factor)
 			
 			# Ensure dimensions are multiples of factor
 			w = (w // self.factor) * self.factor
 			h = (h // self.factor) * self.factor
 			
+			ratio_str = f"{ratio:.2f}"
 			buckets[ratio_str] = (w, h)
 		return buckets
 
