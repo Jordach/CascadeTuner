@@ -126,7 +126,7 @@ def main():
     auto_bucketer = StrictBucketeer(
         density=settings["image_size"],
         factor=8,
-        ratios=settings["multi_aspect_ratio"],
+        aspect_ratios=settings["multi_aspect_ratio"],
         reverse_list=False,
         transforms=torchvision.transforms.ToTensor(),
     )
