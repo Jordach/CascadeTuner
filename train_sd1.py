@@ -128,6 +128,7 @@ def main():
         factor=8,
         ratios=settings["multi_aspect_ratio"],
         p_random_ratio=0,
+        reverse_list=False,
         transforms=torchvision.transforms.ToTensor(),
         settings=settings
     )
