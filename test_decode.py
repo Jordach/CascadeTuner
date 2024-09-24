@@ -1,11 +1,11 @@
 import torch
 # from diffusers import AutoencoderKL
-from diffusers.utils.import_utils import is_xformers_available
+# from diffusers.utils.import_utils import is_xformers_available
 from PIL import Image
 import numpy as np
-import pprint
+from tokeniser_util import tokenize_respecting_boundaries
 
-batch = torch.load("E:\\sd1_latents\\latent_cache_your_sd1_finetune_0.pt")
+# batch = torch.load("E:\\sd1_latents\\latent_cache_your_sd1_finetune_0.pt")
 
 # Load the VAE model
 # vae = AutoencoderKL.from_pretrained("X:\sd1-5", subfolder="vae")
@@ -36,10 +36,36 @@ batch = torch.load("E:\\sd1_latents\\latent_cache_your_sd1_finetune_0.pt")
 from transformers import CLIPTokenizer
 tokenizer = CLIPTokenizer.from_pretrained("X:\sd1-5", subfolder="tokenizer")
 
-for partial in batch["tokens"]:
+# This is some VLM slop to test how it handles tokenisation of boundaries
+test_batch = [
+	"This is a digital anime-style drawing depicting a sexual scene. The main focus is on a woman with long, wavy blue hair and striking green eyes. She has a fair complexion and is topless, her large breasts prominently displayed. Her expression is one of pleasure, with a slightly open mouth and flushed cheeks.",
+	"She is lying on a red surface, possibly a bed, and is being held by a pair of large, dark-skinned hands, which are grabbing her breasts from underneath. Her breasts are positioned directly in front of the viewer, with a visible censor bar covering her nipples. The background is minimalistic, focusing entirely on the woman and the hands.",
+	"The artist's signature, '@puch-11744,' is visible in the top left corner of the image. The image has a glossy texture, indicative of modern digital art. The style is typical of adult anime, characterized by exaggerated features, bright colors, and a focus on eroticism. The overall tone is explicit and intended for an adult audience."
+]
+
+# Compare respected boundaries vs regular CLIP encoding
+test_tokens, test_mask = tokenize_respecting_boundaries(tokenizer, test_batch)
+
+for partial in test_tokens:
 	decoded_texts = tokenizer.batch_decode(partial, skip_special_tokens=True)
-	
 	pos = 0
 	for text in decoded_texts:
 		print(pos, text)
 		pos+=1
+
+orig_tokens = tokenizer(
+	test_batch,
+	padding=False,
+	add_special_tokens=False,
+	verbose=False
+).input_ids
+
+print("")
+print("---")
+print("")
+
+orig_texts = tokenizer.batch_decode(orig_tokens, skip_special_tokens=True)
+pos = 0
+for text in orig_texts:
+	print(pos, text)
+	pos+=1

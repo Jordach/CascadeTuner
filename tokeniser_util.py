@@ -9,7 +9,7 @@ def tokenize_respecting_boundaries(tokenizer, captions, max_length=75):
 	max_chunks = 0
 
 	for caption in captions:
-		words = re.findall(r'\S+|\s+', caption)
+		words = re.findall(r'\s+|[^\s]+[.!?\'"\-)}\\]*', caption)
 		tokenized_caption = []
 		attention_mask = []
 		current_chunk = []

@@ -20,3 +20,4 @@ warmup-scheduler @ git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 torchtools @ git+https://github.com/pabloppp/pytorch-tools
 tensorboard
 diffusers
+pyzstd

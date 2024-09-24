@@ -24,6 +24,8 @@ from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from sd1_util import SD1CachedLatents
 from core_util import create_folder_if_necessary
+from zstd_util import save_torch_zstd, load_torch_zstd
+
 logger = get_logger(__name__)
 
 def vae_encode(images, vae):
@@ -193,8 +195,8 @@ def main():
                 batch["vae_encoded"] = vae_encode(batch["images"], vae)
             del batch["images"]
 
-            file_name = f"latent_cache_{settings['experiment_id']}_{step}.pt"
-            torch.save(batch, os.path.join(settings["latent_cache_location"], file_name))
+            file_name = f"latent_cache_{settings['experiment_id']}_{step}.zpt"
+            save_torch_zstd(batch, os.path.join(settings["latent_cache_location"], file_name))
             latent_cache.add_latent_batch(os.path.join(settings["latent_cache_location"], file_name), False)
             step += 1
             break
