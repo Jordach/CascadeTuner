@@ -10,7 +10,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 def vae_encode(images, vae):
 	_images = images.to(dtype=vae.dtype)
 	latents = vae.encode(_images).latent_dist.sample()
-	return latents * 0.18215
+	return latents * vae.config.scaling_factor
 
 # This is known to work on multi-GPU setups
 class SD1CachedLatents(Dataset):

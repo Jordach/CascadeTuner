@@ -33,7 +33,7 @@ for x in batch["tokens"]:
 
 # # Function to decode latents
 # def decode_latents(latents):
-# 	latents = 1 / 0.18215 * (latents)
+# 	latents = 1 / vae.config.scaling_factor * latents
 # 	with torch.no_grad():
 # 		image = vae.decode(latents).sample
 
