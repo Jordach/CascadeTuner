@@ -322,6 +322,9 @@ def main():
         text_model.train()
     else:
         text_model.eval()
+
+    if "min_snr_gamma" in settings:
+        accelerator.print("Using minSNR timestep weighting.")
     
     for e in epoch_bar:
         current_step = 0
