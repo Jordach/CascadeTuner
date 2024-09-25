@@ -1,6 +1,6 @@
 import torch
-# from diffusers import AutoencoderKL
-# from diffusers.utils.import_utils import is_xformers_available
+from diffusers import AutoencoderKL
+from diffusers.utils.import_utils import is_xformers_available
 from PIL import Image
 import numpy as np
 from tokeniser_util import tokenize_respecting_boundaries
@@ -8,48 +8,48 @@ from zstd_util import load_torch_zstd
 import random
 
 bid = random.randint(0, 279)
-batch = torch.load("E:\\validate\\latent_cache_142366.pt")
-for x in batch["tokens"]:
-	print(x)
-	break
+# batch = torch.load("E:\\validate\\latent_cache_142366.pt")
+# for x in batch["tokens"]:
+# 	print(x)
+# 	break
 
-print("---")
+# print("---")
 
-batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_your_sd1_finetune_{bid}.zpt", "cuda:0")
-for x in batch["tokens"]:
-	print(x)
-	break
+batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_your_sd1_finetune_279.zpt", "cuda:0")
+# for x in batch["tokens"]:
+# 	print(x)
+# 	break
 
-# # Load the VAE model
-# vae = AutoencoderKL.from_pretrained("X:\sd1-5", subfolder="vae")
-# vae.to("cuda:0")
-# vae.requires_grad_(False)
-# vae.enable_slicing()
-# if is_xformers_available():
-# 	try:
-# 		vae.enable_xformers_memory_efficient_attention()
-# 	except Exception as e:
-# 		print("no xformers")
+# Load the VAE model
+vae = AutoencoderKL.from_pretrained("X:\sd1-5", subfolder="vae")
+vae.to("cuda:0")
+vae.requires_grad_(False)
+vae.enable_slicing()
+if is_xformers_available():
+	try:
+		vae.enable_xformers_memory_efficient_attention()
+	except Exception as e:
+		print("no xformers")
 
-# # Function to decode latents
-# def decode_latents(latents):
-# 	latents = 1 / vae.config.scaling_factor * latents
-# 	with torch.no_grad():
-# 		image = vae.decode(latents).sample
+# Function to decode latents
+def decode_latents(latents):
+	latents = 1 / vae.config.scaling_factor * latents
+	with torch.no_grad():
+		image = vae.decode(latents).sample
 
-# 	image = (image / 1).clamp(0, 1)
-# 	image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
-# 	images = (image * 255).round().astype("uint8")
-# 	pil_images = [Image.fromarray(image) for image in images]
-# 	return pil_images
+	image = (image / 1).clamp(0, 1)
+	image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
+	images = (image * 255).round().astype("uint8")
+	pil_images = [Image.fromarray(image) for image in images]
+	return pil_images
 
-# decoded_images = decode_latents(batch["vae_encoded"].to(dtype=torch.float32))
+decoded_images = decode_latents(batch["vae_encoded"].to(dtype=torch.float32))
 
-# for i in range(len(decoded_images)):
-# 	decoded_images[i].save(f"decoded_image_{bid}_{i}.png")
+for i in range(len(decoded_images)):
+	decoded_images[i].save(f"decoded_image_0_{i}.png")
 
-from transformers import CLIPTokenizer
-tokenizer = CLIPTokenizer.from_pretrained("X:\sd1-5", subfolder="tokenizer")
+# from transformers import CLIPTokenizer
+# tokenizer = CLIPTokenizer.from_pretrained("X:\sd1-5", subfolder="tokenizer")
 
 # # This is some VLM slop to test how it handles tokenisation of boundaries
 # test_batch = [

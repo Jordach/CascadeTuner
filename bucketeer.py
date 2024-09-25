@@ -202,7 +202,7 @@ class StrictBucketeer:
 		target_size = self.buckets[ratio_str]
 		
 		# Determine resize dimensions (resize smallest side to match target)
-		if w <= h:
+		if w >= h:
 			resize_size = (target_size[0], int(h * target_size[0] / w))
 		else:
 			resize_size = (int(w * target_size[1] / h), target_size[1])
