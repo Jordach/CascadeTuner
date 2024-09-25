@@ -306,6 +306,9 @@ def main():
     if accelerator.is_main_process:
         accelerator.init_trackers("training")
     
+    accelerator.wait_for_everyone()
+    dataloader = accelerator.prepare(dataloader)
+    
     # Training Loop:
     steps_bar = tqdm(range(len(dataloader)), desc="Steps to Epoch", disable=not accelerator.is_local_main_process)
     epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs", disable=not accelerator.is_local_main_process)
