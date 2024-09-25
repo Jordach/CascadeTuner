@@ -13,7 +13,7 @@ def vae_encode(images, vae):
 	latents = vae.encode(_images).latent_dist.sample() * vae.config.scaling_factor
 	return latents
 
-vae_preprocess = transforms.compose([
+vae_preprocess = transforms.Compose([
 	transforms.ToTensor(),
 	transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 ])
