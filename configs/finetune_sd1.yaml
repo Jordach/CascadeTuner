@@ -4,7 +4,7 @@
 # Example: X:\output or /some/unix/path
 checkpoint_path: output
 # The name of the training run and model name
-# Example: X:\output\unet\stage_c_1b_finetuning.safetensors or /some/unix/path/output/unet/stage_c_1b_finetuning.safetensors
+# Example: X:\output\your_sd1_finetune or /some/unix/path/output/your_sd1_finetune
 # This will also name the output checkpoints.
 experiment_id: your_sd1_finetune
 
@@ -24,6 +24,9 @@ seed: 69
 
 # How many tokens should the model concatenate out to?
 max_token_limit: 900
+
+# Uncomment the line below to enable minSNR timestep weighting
+# min_snr_gamma: 5
 
 # The trained image size. Must be a multiple of 32.
 # 1B was trained at 768, 3.6B was trained at 1024

@@ -18,9 +18,10 @@ from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
-from dataset_util import BucketWalker
-from bucketeer import Bucketeer, StrictBucketeer
 from transformers import CLIPTextModel, CLIPTokenizer
+from bucketeer import StrictBucketeer
+from core_util import minSNR_weighting
+from dataset_util import BucketWalker
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from optim_util import get_optimizer, step_adafactor
 from sd1_util import SD1CachedLatents, vae_encode, vae_preprocess, save_sd1_pipeline
@@ -347,11 +348,17 @@ def main():
                     
                     model_pred = unet(noisy_latents, timesteps, text_embeds).sample
                     target = noise
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+
+                    if "min_snr_gamma" in settings:
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        loss = loss.mean([1, 2, 3])
+                        loss = minSNR_weighting(loss, timesteps, noise_scheduler, settings["min_snr_gamma"])
+                    else:
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                     loss = loss.mean()
 
-                    del timesteps, noise, latents, noisy_latents, text_embeds
                     accelerator.backward(loss)
+                    del timesteps, noise, latents, noisy_latents, text_embeds, target
 
                     if accelerator.sync_gradients:
                         grad_norm = accelerator.clip_grad_norm_(itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters(), 1.0)
