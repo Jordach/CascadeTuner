@@ -68,7 +68,7 @@ class SD1CachedLatents(Dataset):
 
 def save_sd1_pipeline(path, settings, accelerator, unet, text_model):
 	if accelerator.is_main_process:
-		pipeline = StableDiffusionPipeline.from_pretrained(settings["model_name"])
+		pipeline = StableDiffusionPipeline.from_pretrained(settings["model_name"], safety_checker=None)
 		pipeline.unet = accelerator.unwrap_model(unet)
 		if settings["train_text_encoder"]:
 			pipeline.text_encoder = accelerator.unwrap_model(text_model)

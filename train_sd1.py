@@ -236,6 +236,7 @@ def main():
         del vae
         vae = None
 
+    accelerator.print("Now loading core model files.")
     noise_scheduler = DDPMScheduler.from_pretrained(settings["model_name"], subfolder="scheduler")
     unet = UNet2DConditionModel.from_pretrained(settings["model_name"], subfolder="unet", main_dtype=main_dtype)
     text_model = CLIPTextModel.from_pretrained(settings["model_name"], subfolder="text_encoder")
@@ -252,6 +253,7 @@ def main():
         except Exception as e:
             raise Exception("Could not enable memory efficient attention. Make sure xformers is installed")
 
+    accelerator.print("Loading optimizer[s].")
     # Unet optimizer and LR scheduler:
     unet_optimizer, unet_optimizer_kwargs = get_optimizer(settings["optimizer_type"], settings)
     unet_optimizer = unet_optimizer((unet.parameters()), lr=settings["lr"], **unet_optimizer_kwargs)
@@ -345,8 +347,7 @@ def main():
                     
                     model_pred = unet(noisy_latents, timesteps, text_embeds).sample
                     target = noise
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                    loss = loss.mean([1, 2, 3])
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                     loss = loss.mean()
 
                     del timesteps, noise, latents, noisy_latents, text_embeds
