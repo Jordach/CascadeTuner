@@ -191,7 +191,7 @@ class StrictBucketeer:
 			h = (h // self.factor) * self.factor
 			
 			ratio_str = f"{ratio:.2f}"
-			buckets[ratio_str] = (h, w)
+			buckets[ratio_str] = (w, h)
 		return buckets
 
 	def get_resize_and_crop_sizes(self, w, h):
