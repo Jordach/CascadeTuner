@@ -39,9 +39,9 @@ class BucketWalker():
 				if remain > 0 and remain != batch_size:
 					for i in range(remain):
 						self.buckets[aspect].extend(random.sample(self.buckets[aspect], 1))
-					print(f"Bucket {aspect} has {aspect_len} images, duplicated {remain} images to fit batch size.")
-				else:
-					print(f"Bucket {aspect} has {aspect_len} images, duplicates not required, nice!")
+					#print(f"Bucket {aspect} has {aspect_len} images, duplicated {remain} images to fit batch size.")
+				# else:
+					# print(f"Bucket {aspect} has {aspect_len} images, duplicates not required, nice!")
 				random.shuffle(self.buckets[aspect])
 				# Finally
 				self.final_dataset.extend(self.buckets[aspect])
