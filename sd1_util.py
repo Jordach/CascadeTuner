@@ -7,6 +7,7 @@ from zstd_util import load_torch_zstd
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 from torchvision import transforms
+from tqdm import tqdm
 
 def vae_encode(images, vae):
 	_images = images.to(dtype=vae.dtype)
@@ -34,7 +35,8 @@ class SD1CachedLatents(Dataset):
 	def __getitem__(self, index):
 		if index == 0:
 			random.shuffle(self.batches)
-			self.accelerator.print("Cached Latents Shuffled.")
+			if self.accelerator.is_main_process:
+				tqdm.write("Latent Cache shuffled.")
 
 		exts = os.path.splitext(self.batches[index][0])
 		if exts[1] == ".pt":
