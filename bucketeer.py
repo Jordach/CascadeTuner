@@ -203,11 +203,11 @@ class StrictBucketeer:
 		
 		# Determine resize dimensions (resize smallest side to match target)
 		if w <= h:
-			resize_size = (int(h * target_size[0] / w), target_size[0],)
+			resize_size = (target_size[0], int(h * target_size[0] / w))
 		else:
-			resize_size = (target_size[1], int(w * target_size[1] / h),)
+			resize_size = (int(w * target_size[1] / h), target_size[1])
 		
-		return resize_size, target_size
+		return target_size, target_size
 
 	def load_and_resize(self, item):
 		with warnings.catch_warnings():
