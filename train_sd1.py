@@ -23,7 +23,7 @@ from bucketeer import Bucketeer, StrictBucketeer
 from transformers import CLIPTextModel, CLIPTokenizer
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from optim_util import get_optimizer, step_adafactor
-from sd1_util import SD1CachedLatents, vae_encode, save_sd1_pipeline
+from sd1_util import SD1CachedLatents, vae_encode, vae_preprocess, save_sd1_pipeline
 from zstd_util import save_torch_zstd
 from contextlib import nullcontext
 
@@ -128,7 +128,7 @@ def main():
         density=settings["image_size"]**2,
         factor=8,
         aspect_ratios=settings["multi_aspect_ratio"],
-        transforms=torchvision.transforms.ToTensor(),
+        transforms=vae_preprocess,
     )
     #auto_bucketer.clean_up_duplicate_buckets(emit_print=True)
 

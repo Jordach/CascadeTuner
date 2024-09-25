@@ -6,11 +6,17 @@ from tokeniser_util import tokenize_respecting_boundaries
 from zstd_util import load_torch_zstd
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
+from torchvision import transforms
 
 def vae_encode(images, vae):
 	_images = images.to(dtype=vae.dtype)
 	latents = vae.encode(_images).latent_dist.sample() * vae.config.scaling_factor
 	return latents
+
+vae_preprocess = transforms.compose([
+	transforms.ToTensor(),
+	transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+])
 
 # This is known to work on multi-GPU setups
 class SD1CachedLatents(Dataset):
