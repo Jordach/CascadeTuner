@@ -202,10 +202,10 @@ class StrictBucketeer:
 		target_size = self.buckets[ratio_str]
 		
 		# Determine resize dimensions (resize smallest side to match target)
-		if w >= h:
-			resize_size = (target_size[0], int(h * target_size[0] / w))
+		if w <= h:
+			resize_size = (int(h * target_size[0] / w), target_size[0],)
 		else:
-			resize_size = (int(w * target_size[1] / h), target_size[1])
+			resize_size = (target_size[1], int(w * target_size[1] / h),)
 		
 		return resize_size, target_size
 
@@ -238,9 +238,9 @@ class StrictBucketeer:
 				elif self.crop_mode == 'smart':
 					self.smartcrop.output_size = crop_size
 					img = self.smartcrop(img)
-			file_path = f"dataset_debug.csv"
-			with open(file_path, "a") as f:
-				f.write(f"{w/h:.2f},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
+			# file_path = f"dataset_debug.csv"
+			# with open(file_path, "a") as f:
+			# 	f.write(f"{w/h:.2f},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
 			return img
 
 	def __call__(self, item):
