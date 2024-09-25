@@ -105,13 +105,16 @@ def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokeni
 			attn_chunk = att_mask[chunk_id].to(accelerator.device)
 			attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device)), 1)
 			# First 75 tokens we allow BOS to not be masked - otherwise we mask them out
-			text_encoder_output = accelerator.unwrap_model(text_model)(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True) if accelerator.num_processes > 1 else text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
-
+			fake_text_model = accelerator.unwrap_model(text_model) if accelerator.num_processes > 1 else text_model
+			# encode
+			text_encoder_output = fake_text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
+			hidden_states = text_encoder_output["hidden_states"][settings["clip_skip"]]
+			text_embed = fake_text_model.text_model.final_layer_norm(hidden_states)
 			if text_embeddings is None:
-				text_embeddings = text_encoder_output["hidden_states"][settings["clip_skip"]]
-				text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
+				text_embeddings = text_embed
+				text_embeddings_pool = hidden_states.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
 			else:
-				text_embeddings = torch.cat((text_embeddings, text_encoder_output["hidden_states"][settings["clip_skip"]]), dim=-2)
+				text_embeddings = torch.cat((text_embeddings, text_embed), dim=-2)
 				# text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2) if "text_embeds" in text_encoder_output else None
 
 	return text_embeddings, text_embeddings_pool
