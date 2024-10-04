@@ -43,14 +43,27 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 		for tag in tags:
 			t = tag.strip()
 			if t in tag_dict:
+				# Normalise to between 0-1
 				mult = remap(
 					tag_dict[t],
 					settings["tag_weighting_count_low"],
 					settings["tag_weighting_count_high"],
-					settings["tag_weighting_multi_max"],
-					settings["tag_weighting_multi_min"]
+					1,
+					0
 				)
-
+				# Clamp to prevent linear interpolation
+				mult = clamp(mult, settings["tag_weighting_count_low"], settings["tag_weighting_count_high"])
+				# Give it a curve to smooth lessen aggression of the mean
+				mult = mult ** 3
+				# Remap the 0-1 curve to the weighting range
+				mult = remap(
+					tag_dict[t],
+					0,
+					1,
+					settings["tag_weighting_multi_min"],
+					settings["tag_weighting_multi_max"]
+				)
+				# Clamp to prevent linear interpolation
 				mult = clamp(mult, settings["tag_weighting_multi_min"], settings["tag_weighting_multi_max"])
 			else:
 				mult = 1
