@@ -61,6 +61,7 @@ def main():
     tag_weighting_dict = {}
     if settings["tag_weighting_dict"] != "__no_path__":
         settings["tag_weighting_used"] = True
+        accelerator.print("Will collect tag counts for loss weighting.")
         if os.path.exists(settings["tag_weighting_dict"]):
             load_from_json_storage(settings["tag_weighting_dict"], tag_weighting_dict)
 
