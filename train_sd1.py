@@ -437,10 +437,12 @@ def main():
             if current_step % settings["save_every"] == 0:
                 step_path = os.path.join(settings["checkpoint_path"], f"{settings['experiment_id']}_e{e}_s{current_step}")
                 save_sd1_pipeline(step_path, settings, accelerator, unet, text_model)
+                accelerator.print(f"Model saved to: {step_path}")
                 accelerator.wait_for_everyone()
         if (e+1) % settings["save_every_n_epoch"] == 0 or settings["save_every_n_epoch"] == 1:
             epoch_path = os.path.join(settings["checkpoint_path"], f"{settings['experiment_id']}_e{e+1}")
             save_sd1_pipeline(epoch_path, settings, accelerator, unet, text_model)
+            accelerator.print(f"Model saved to: {epoch_path}")
             accelerator.wait_for_everyone()
         
         settings["seed"] += 1
