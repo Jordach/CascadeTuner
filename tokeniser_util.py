@@ -12,7 +12,7 @@ def shuffle_and_drop_tags(caption, settings):
 	num_kept = max(settings["tag_dropout_total_min"], int(num_tags * (1 - settings["tag_dropout_percentage"])))
 
 	# If num_kept equals num_tags, we don't need to use np.random.choice
-	if num_kept == num_tags:
+	if num_kept >= num_tags:
 		kept_tags = tags
 	else:
 		# Randomly pick which tags to keep
