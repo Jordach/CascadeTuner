@@ -42,6 +42,8 @@ def parse_args():
 def main():
     args = parse_args()
     
+    settings = {}
+
     settings["multi_aspect_ratio"] = [1]
     settings["dataset_cache"] = "__no_path__"
     settings["tag_shuffling"] = False
@@ -52,12 +54,11 @@ def main():
     settings["tag_weighting_count_low"] = 500 # Anything under this count will be treated as multi_max
     settings["tag_weighting_count_high"] = 5000 # Anything over this count will be treated as multi_min
     settings["tag_weighting_multi_min"] = 1
+    settings["tag_weighting_multi_max"] = 4
 
     # Load settings from YAML config
     with open(args.yaml, "r") as f:
         settings = yaml.safe_load(f)
-
-    settings["tag_weighting_multi_max"] = 4
 
     main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
     if settings["dtype"] == "tf32":
