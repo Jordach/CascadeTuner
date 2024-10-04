@@ -48,8 +48,8 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 					tag_dict[t],
 					settings["tag_weighting_count_low"],
 					settings["tag_weighting_count_high"],
-					1,
-					0
+					0,
+					1
 				)
 				# Clamp to prevent linear interpolation
 				mult = clamp(mult, settings["tag_weighting_count_low"], settings["tag_weighting_count_high"])
