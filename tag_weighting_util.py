@@ -54,7 +54,7 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 				# Clamp to prevent linear interpolation
 				mult = clamp(mult, settings["tag_weighting_count_low"], settings["tag_weighting_count_high"])
 				# Give it a curve to smooth lessen aggression of the mean
-				mult = mult ** 3
+				mult = mult ** 2
 				# Remap the 0-1 curve to the weighting range
 				mult = remap(
 					tag_dict[t],
