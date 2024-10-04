@@ -42,20 +42,21 @@ def parse_args():
 def main():
     args = parse_args()
     
-    # Load settings from YAML config
-    with open(args.yaml, "r") as f:
-        settings = yaml.safe_load(f)
-
+    settings["multi_aspect_ratio"] = [1]
+    settings["dataset_cache"] = "__no_path__"
     settings["tag_shuffling"] = False
     settings["unet_optim"] = "_____no_path.pt"
     settings["text_enc_optim"] = "_____no_path.pt"
-    settings["multi_aspect_ratio"] = [1]
-    settings["dataset_cache"] = "__no_path__"
     settings["tag_weighting_path"] = "__no_path__" # Requires a valid path to function
     settings["tag_weighting_used"] = False
     settings["tag_weighting_count_low"] = 500 # Anything under this count will be treated as multi_max
     settings["tag_weighting_count_high"] = 5000 # Anything over this count will be treated as multi_min
     settings["tag_weighting_multi_min"] = 1
+
+    # Load settings from YAML config
+    with open(args.yaml, "r") as f:
+        settings = yaml.safe_load(f)
+
     settings["tag_weighting_multi_max"] = 4
 
     main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
@@ -75,7 +76,6 @@ def main():
         accelerator.print("Will collect tag counts for loss weighting.")
         if os.path.exists(settings["tag_weighting_path"]):
             load_from_json_storage(settings["tag_weighting_path"], tag_weighting_dict)
-
 
     # Ensure output directory exists:
     if accelerator.is_main_process:
