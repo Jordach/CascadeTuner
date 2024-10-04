@@ -58,13 +58,6 @@ def main():
     settings["tag_weighting_multi_min"] = 1
     settings["tag_weighting_multi_max"] = 4
 
-    tag_weighting_dict = {}
-    if settings["tag_weighting_dict"] != "__no_path__":
-        settings["tag_weighting_used"] = True
-        accelerator.print("Will collect tag counts for loss weighting.")
-        if os.path.exists(settings["tag_weighting_dict"]):
-            load_from_json_storage(settings["tag_weighting_dict"], tag_weighting_dict)
-
     main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
     if settings["dtype"] == "tf32":
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -75,6 +68,14 @@ def main():
        log_with="tensorboard",
        project_dir=f"{settings['checkpoint_path']}"
     )
+
+    tag_weighting_dict = {}
+    if settings["tag_weighting_dict"] != "__no_path__":
+        settings["tag_weighting_used"] = True
+        accelerator.print("Will collect tag counts for loss weighting.")
+        if os.path.exists(settings["tag_weighting_dict"]):
+            load_from_json_storage(settings["tag_weighting_dict"], tag_weighting_dict)
+
 
     # Ensure output directory exists:
     if accelerator.is_main_process:
