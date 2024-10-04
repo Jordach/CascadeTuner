@@ -21,10 +21,11 @@ def add_tags_from_batch(tag_dict, captions):
 	for caption in captions:
 		tags = caption.split(",")
 		for tag in tags:
-			if tag not in tag_dict:
-				tag_dict[tag] = 1
+			t = tag.strip()
+			if t not in tag_dict:
+				tag_dict[t] = 1
 			else:
-				tag_dict[tag] += 1
+				tag_dict[t] += 1
 
 def clamp(val, min_val, max_val):
 	return max(min(val, max_val), min_val)
@@ -40,9 +41,10 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 	for caption in captions:
 		tags = caption.split(",")
 		for tag in tags:
-			if tag in tag_dict:
+			t = tag.strip()
+			if t in tag_dict:
 				mult = remap(
-					tag_dict[tag],
+					tag_dict[t],
 					settings["tag_weighting_count_low"],
 					settings["tag_weighting_count_high"],
 					settings["tag_weighting_multi_max"],
