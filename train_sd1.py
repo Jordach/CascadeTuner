@@ -58,7 +58,8 @@ def main():
 
     # Load settings from YAML config
     with open(args.yaml, "r") as f:
-        settings = yaml.safe_load(f)
+        config = yaml.safe_load(f)
+        settings = settings | config
 
     main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
     if settings["dtype"] == "tf32":
