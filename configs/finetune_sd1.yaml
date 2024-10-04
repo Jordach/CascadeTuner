@@ -83,10 +83,10 @@ tag_shuffling: false
 #tag_weighting_path: path/to/tag_dict.txt
 
 # Minimum count of tags for the maximum loss multiplication to take effect
-# tag_weighting_count_min: 500
+# tag_weighting_count_low: 500
 
 # Maximum count of tags for the minimum loss multiplication to take effect (Usually the value of 1 - no multiplication)
-# tag_weighting_count_max: 5000
+# tag_weighting_count_high: 5000
 
 # Minimum loss multiplication value
 # tag_weighting_multi_min: 1
