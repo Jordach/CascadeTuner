@@ -8,6 +8,9 @@ from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusi
 from transformers import CLIPTextModel, CLIPTokenizer
 from torchvision import transforms
 from tqdm import tqdm
+import sys
+from contextlib import contextmanager
+from io import StringIO
 
 def vae_encode(images, vae):
 	_images = images.to(dtype=vae.dtype)
@@ -35,8 +38,8 @@ class SD1CachedLatents(Dataset):
 	def __getitem__(self, index):
 		if index == 0:
 			random.shuffle(self.batches)
-			if self.accelerator.is_main_process:
-				tqdm.write("Latent Cache shuffled.")
+			# if self.accelerator.is_main_process:
+			# 	tqdm.write("Latent Cache shuffled.")
 
 		exts = os.path.splitext(self.batches[index][0])
 		if exts[1] == ".pt":
@@ -74,10 +77,19 @@ class SD1CachedLatents(Dataset):
 	def add_latent_batch(self, batch, dropout):
 		self.batches.append((batch, dropout))
 
+# This silences the annoying as hell Diffusers warning about the safety checker
+@contextmanager
+def override_print():
+	original_print = sys.stdout
+	sys.stdout = StringIO()
+	yield
+	sys.stdout = original_print
+
 def save_sd1_pipeline(path, settings, accelerator, unet, text_model):
 	if accelerator.is_main_process:
-		pipeline = StableDiffusionPipeline.from_pretrained(settings["model_name"], safety_checker=None)
-		pipeline.unet = accelerator.unwrap_model(unet)
-		if settings["train_text_encoder"]:
-			pipeline.text_encoder = accelerator.unwrap_model(text_model)
-		pipeline.save_pretrained(path)
+		with override_print():
+			pipeline = StableDiffusionPipeline.from_pretrained(settings["model_name"], safety_checker=None)
+			pipeline.unet = accelerator.unwrap_model(unet)
+			if settings["train_text_encoder"]:
+				pipeline.text_encoder = accelerator.unwrap_model(text_model)
+			pipeline.save_pretrained(path)
