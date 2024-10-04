@@ -75,9 +75,12 @@ def main():
     tag_weighting_dict = {}
     if settings["tag_weighting_path"] != "__no_path__":
         settings["tag_weighting_used"] = True
-        accelerator.print("Will collect tag counts for loss weighting.")
-        if os.path.exists(settings["tag_weighting_path"]):
+        # Only load it if we need to
+        if os.path.exists(settings["tag_weighting_path"]) and settings["use_latent_cache"]:
             load_from_json_storage(settings["tag_weighting_path"], tag_weighting_dict)
+            accelerator.print("Will load tag counts from cache for loss weighting.")
+        else:
+            accelerator.print("Will collect tag counts for loss weighting.")
 
     # Ensure output directory exists:
     if accelerator.is_main_process:
