@@ -65,6 +65,7 @@ class SD1CachedLatents(Dataset):
 			# Tokenize with our custom function that respects word boundaries
 			tokenized_captions, attention_masks = tokenize_respecting_boundaries(self.tokenizer, shuffled_captions)
 
+			cache["captions"] = shuffled_captions
 			cache["tokens"] = tokenized_captions
 			cache["att_mask"] = attention_masks
 
