@@ -3,6 +3,7 @@ import os
 import yaml
 import numpy as np
 import random
+import json
 
 import torch
 import torch.nn.functional as F
@@ -27,7 +28,7 @@ from optim_util import get_optimizer, step_adafactor
 from sd1_util import SD1CachedLatents, vae_encode, vae_preprocess, save_sd1_pipeline
 from zstd_util import save_torch_zstd
 from contextlib import nullcontext
-
+from tag_weighting_util import load_from_json_storage, save_to_json_storage, add_tags_from_batch, get_loss_multiplier_for_batch
 
 logger = get_logger(__name__)
 
@@ -49,6 +50,19 @@ def main():
     settings["unet_optim"] = "_____no_path.pt"
     settings["text_enc_optim"] = "_____no_path.pt"
     settings["multi_aspect_ratio"] = [1]
+    settings["dataset_cache"] = "__no_path__"
+    settings["tag_weighting_dict"] = "__no_path__" # Requires a valid path to function
+    settings["tag_weighting_used"] = False
+    settings["tag_weighting_count_low"] = 500 # Anything under this count will be treated as multi_max
+    settings["tag_weighting_count_high"] = 5000 # Anything over this count will be treated as multi_min
+    settings["tag_weighting_multi_min"] = 1
+    settings["tag_weighting_multi_max"] = 4
+
+    tag_weighting_dict = {}
+    if settings["tag_weighting_dict"] != "__no_path__":
+        settings["tag_weighting_used"] = True
+        if os.path.exists(settings["tag_weighting_dict"]):
+            load_from_json_storage(settings["tag_weighting_dict"], tag_weighting_dict)
 
     main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
     if settings["dtype"] == "tf32":
@@ -83,12 +97,21 @@ def main():
     # Setup Dataloader Phase:
     if not settings["use_latent_cache"]:
         accelerator.print("Loading Dataset[s].")
-        pre_dataset = BucketWalker(
-            reject_aspects=settings["reject_aspects"],
-            tokenizer=tokenizer
-        )
 
-        if "local_dataset_path" in settings:
+        did_load_from_cache = False
+        if settings["dataset_cache"] != "__no_path__" and os.path.exists(settings["dataset_cache"]):
+            accelerator.print("Loading dataset cache from disk.")
+            pre_dataset = torch.load(settings["dataset_cache"])
+            did_load_from_cache = True
+        else:
+            if settings["dataset_cache"] != "__no_path__":
+                accelerator.print("Will create a dataset cache after searching folders.")
+            pre_dataset = BucketWalker(
+               reject_aspects=settings["reject_aspects"],
+               tokenizer=tokenizer
+            )
+
+        if "local_dataset_path" in settings and not did_load_from_cache:
             if type(settings["local_dataset_path"]) is list:
                 for dir in settings["local_dataset_path"]:
                     pre_dataset.scan_folder(dir)
@@ -96,6 +119,11 @@ def main():
                 pre_dataset.scan_folder(settings["local_dataset_path"])
             else:
                 raise ValueError("'local_dataset_path' must either be a string, or list of strings containing paths.")
+
+        # Save state of the dataset class if it wasn't instanced from 
+        if settings["dataset_cache"] != "__no_path__" and not did_load_from_cache:
+            torch.save(pre_dataset, f"{settings['dataset_cache']}")
+            accelerator.print("Saved dataset cache.")
 
         accelerator.print("Bucketing Info:")
 
@@ -107,11 +135,10 @@ def main():
         # Do NOT load images - save that for the second dataloader pass
         images = [data["images"] for data in batch]
         caption = [data["caption"] for data in batch]
-        aspects = [data["aspects"] for data in batch]
 
-        cropped_tokens, cropped_attn = tokenize_respecting_boundaries(tokenizer, caption)
-        
-        return {"images": images, "tokens": cropped_tokens, "att_mask": cropped_attn, "caption": caption, "aspects": aspects, "dropout": False}
+        if settings["tag_weighting_used"]:
+            add_tags_from_batch(tag_weighting_dict, caption)
+        return {"images": images, "caption": caption, "dropout": False}
 
     pre_dataloader = DataLoader(
         pre_dataset, batch_size=settings["batch_size"], shuffle=False, collate_fn=pre_collate, pin_memory=False,
@@ -125,29 +152,31 @@ def main():
         for batch in tqdm(pre_dataloader, desc="Dataloader Warmup"):
             dataset.append(batch)
 
+    if settings["tag_weighting_used"] and settings["tag_weighting_dict"] != "__no_path__":
+        save_to_json_storage(settings["tag_weighting_dict"], tag_weighting_dict)
+
     auto_bucketer = StrictBucketeer(
         density=settings["image_size"]**2,
         factor=8,
         aspect_ratios=settings["multi_aspect_ratio"],
         transforms=vae_preprocess,
     )
-    #auto_bucketer.clean_up_duplicate_buckets(emit_print=True)
 
     def collate(batch):
         images = []
         # The reason for not unrolling the images in the prior dataloader was so we can load them only when training,
         # rather than storing all transformed images in memory!
-        aspects = batch[0]["aspects"]
         img = batch[0]["images"]
         for i in range(0, len(batch[0]["images"])):
             images.append(auto_bucketer(img[i]))
         images = torch.stack(images)
         images = images.to(memory_format=torch.contiguous_format)
         images = images.to(accelerator.device)
-        tokens = batch[0]["tokens"]
-        att_mask = batch[0]["att_mask"]
         captions = batch[0]["caption"]
-        return {"images": images, "tokens": tokens, "att_mask": att_mask, "captions": captions, "dropout": False}
+        # Tokenisation should be done during latent caching/runtime VAE encoding process to avoid storing lots of tokens in system memory.
+        tokens, att_mask = tokenize_respecting_boundaries(tokenizer, captions)
+        dropout = batch[0]["dropout"]
+        return {"images": images, "tokens": tokens, "att_mask": att_mask, "captions": captions, "dropout": dropout}
 
     # Shuffle the dataset and initialise the dataloader if we're not latent caching
     set_seed(settings["seed"])
@@ -333,6 +362,7 @@ def main():
         current_step = 0
         steps_bar.reset(total=len(dataloader))
         for step, batch in enumerate(dataloader):
+            loss_weighting_mult = 1
             with accelerator.accumulate(unet, text_model) if settings["train_text_encoder"] else accelerator.accumulate(unet):
                 with accelerator.autocast():
                     captions = batch[0]["tokens"]
@@ -363,6 +393,11 @@ def main():
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                     loss = loss.mean()
 
+                    # Handle loss weighting for tags
+                    if settings["tag_weighting_used"]:
+                        loss_weighting_mult = get_loss_multiplier_for_batch(tag_weighting_dict, settings, batch[0]["captions"]) 
+                    loss = loss * loss_weighting_mult
+
                     accelerator.backward(loss)
                     del timesteps, noise, latents, noisy_latents, text_embeds, target
 
@@ -392,6 +427,9 @@ def main():
 
                 if settings["train_text_encoder"]:
                     logs["te_lr"] = text_scheduler.get_last_lr()[0]
+
+                if settings["tag_weighting_used"]:
+                    logs["loss_weighting"] = loss_weighting_mult
                 
                 epoch_bar.set_postfix(logs)
                 accelerator.log(logs, step=total_steps)

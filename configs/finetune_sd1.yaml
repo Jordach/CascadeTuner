@@ -78,9 +78,29 @@ text_optimizer_type: AdamW8bit
 # Whether to shuffle booru tags (Comma separated)
 tag_shuffling: false
 
+# Uncomment these to make them usable
+# Location of the cached tag weighting dict (required to exist for weighted loss to work)
+#tag_weighting_dict: path/to/tag_dict.txt
+
+# Minimum count of tags for the maximum loss multiplication to take effect
+# tag_weighting_count_min: 500
+
+# Maximum count of tags for the minimum loss multiplication to take effect (Usually the value of 1 - no multiplication)
+# tag_weighting_count_max: 5000
+
+# Minimum loss multiplication value
+# tag_weighting_multi_min: 1
+
+# Maximum loss multiplication value
+# tag_weighting_multi_max: 4
+
 # Where files are located - to repeat a folder, add it again.
 local_dataset_path: []
 # local_dataset_path: [F:\novelai, F:\Waifusion, F:\Fluffvision\images]
+
+# Where the loadable dataset cache should live? This avoids having to load all images of the dataset as a first pass to find unloadable images
+# This will skip loading the data as defined by local_dataset_path.
+# dataset_cache: path/to/your/cache.pt
 
 # Whether to reject images exceeding 1:x.yz ratio (Images will be tested as if they're portrait oriented - data will not be modified)
 reject_aspects: 3.75
