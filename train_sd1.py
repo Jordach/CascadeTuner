@@ -432,7 +432,7 @@ def main():
                     logs["te_lr"] = text_scheduler.get_last_lr()[0]
 
                 if settings["tag_weighting_used"]:
-                    logs["loss_weighting"] = loss_weighting_mult
+                    logs["loss_w"] = loss_weighting_mult
                 
                 epoch_bar.set_postfix(logs)
                 accelerator.log(logs, step=total_steps)
