@@ -9,7 +9,7 @@ def shuffle_and_drop_tags(caption, settings):
 	random.shuffle(tags)
 	# Get number of tags to keep.
 	num_tags = len(tags)
-	num_kept = max(settings["tag_dropout_min"], int(num_tags * (1 - settings["tag_dropout_percentage"])))
+	num_kept = max(settings["tag_dropout_total_min"], int(num_tags * (1 - settings["tag_dropout_percentage"])))
 
 	# Randomly pick which tags to keep
 	kept_keys = np.random.choice(num_tags, num_kept, replace=False)
