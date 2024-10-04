@@ -51,7 +51,7 @@ def main():
     settings["text_enc_optim"] = "_____no_path.pt"
     settings["multi_aspect_ratio"] = [1]
     settings["dataset_cache"] = "__no_path__"
-    settings["tag_weighting_dict"] = "__no_path__" # Requires a valid path to function
+    settings["tag_weighting_path"] = "__no_path__" # Requires a valid path to function
     settings["tag_weighting_used"] = False
     settings["tag_weighting_count_low"] = 500 # Anything under this count will be treated as multi_max
     settings["tag_weighting_count_high"] = 5000 # Anything over this count will be treated as multi_min
@@ -70,11 +70,11 @@ def main():
     )
 
     tag_weighting_dict = {}
-    if settings["tag_weighting_dict"] != "__no_path__":
+    if settings["tag_weighting_path"] != "__no_path__":
         settings["tag_weighting_used"] = True
         accelerator.print("Will collect tag counts for loss weighting.")
-        if os.path.exists(settings["tag_weighting_dict"]):
-            load_from_json_storage(settings["tag_weighting_dict"], tag_weighting_dict)
+        if os.path.exists(settings["tag_weighting_path"]):
+            load_from_json_storage(settings["tag_weighting_path"], tag_weighting_dict)
 
 
     # Ensure output directory exists:
@@ -154,8 +154,8 @@ def main():
         for batch in tqdm(pre_dataloader, desc="Dataloader Warmup"):
             dataset.append(batch)
 
-    if settings["tag_weighting_used"] and settings["tag_weighting_dict"] != "__no_path__":
-        save_to_json_storage(settings["tag_weighting_dict"], tag_weighting_dict)
+    if settings["tag_weighting_used"] and settings["tag_weighting_path"] != "__no_path__":
+        save_to_json_storage(settings["tag_weighting_path"], tag_weighting_dict)
 
     auto_bucketer = StrictBucketeer(
         density=settings["image_size"]**2,

@@ -80,7 +80,7 @@ tag_shuffling: false
 
 # Uncomment these to make them usable
 # Location of the cached tag weighting dict (required to exist for weighted loss to work)
-#tag_weighting_dict: path/to/tag_dict.txt
+#tag_weighting_path: path/to/tag_dict.txt
 
 # Minimum count of tags for the maximum loss multiplication to take effect
 # tag_weighting_count_min: 500
