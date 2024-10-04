@@ -55,6 +55,7 @@ def main():
     settings["tag_weighting_count_high"] = 5000 # Anything over this count will be treated as multi_min
     settings["tag_weighting_multi_min"] = 1
     settings["tag_weighting_multi_max"] = 4
+    settings["tag_weighting_exponent"] = 2
 
     # Load settings from YAML config
     with open(args.yaml, "r") as f:
