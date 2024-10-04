@@ -1,6 +1,23 @@
 import re
 import torch
 import math
+import random
+import numpy as np
+
+def shuffle_and_drop_tags(caption, settings):
+	tags = caption.split(",")
+	random.shuffle(tags)
+	# Get number of tags to keep.
+	num_tags = len(tags)
+	num_kept = max(settings["tag_dropout_min"], int(num_tags * (1 - settings["tag_dropout_percentage"])))
+
+	# Randomly pick which tags to keep
+	kept_keys = np.random.choice(num_tags, num_kept, replace=False)
+	kept_tags = [tags[i] for i in kept_keys]
+
+	# Stitch all tags back into a singular string for processing by the tokenizer
+	shuffled_caption = ", ".join(tag.strip() for tag in kept_tags)
+	return shuffled_caption
 
 def tokenize_respecting_boundaries(tokenizer, captions, max_length=75):
 	batch_size = len(captions)

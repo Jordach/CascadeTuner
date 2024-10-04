@@ -2,7 +2,7 @@ import torch
 import random
 import os
 from torch.utils.data import Dataset
-from tokeniser_util import tokenize_respecting_boundaries
+from tokeniser_util import tokenize_respecting_boundaries, shuffle_and_drop_tags
 from zstd_util import load_torch_zstd
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -24,9 +24,10 @@ vae_preprocess = transforms.Compose([
 
 # This is known to work on multi-GPU setups
 class SD1CachedLatents(Dataset):
-	def __init__(self, accelerator, tokenizer=None, tag_shuffle=True):
+	def __init__(self, accelerator, settings, tokenizer=None, tag_shuffle=True):
 		self.batches = []
 		self.accelerator = accelerator
+		self.settings = settings
 		self.tokenizer = tokenizer
 		self.tag_shuffle = tag_shuffle
 		if tag_shuffle:
@@ -58,10 +59,8 @@ class SD1CachedLatents(Dataset):
 
 			shuffled_captions = []
 			for caption in cache["captions"]:
-				tags = caption.split(",")
-				random.shuffle(tags)
-				shuffled_caption = ", ".join(tag.strip() for tag in tags)
-				shuffled_captions.append(shuffled_caption)
+				shuffled_caption = shuffle_and_drop_tags(caption, self.settings)
+				shuffled_captions.append(shuffled_caption.strip())
 
 			# Tokenize with our custom function that respects word boundaries
 			tokenized_captions, attention_masks = tokenize_respecting_boundaries(self.tokenizer, shuffled_captions)

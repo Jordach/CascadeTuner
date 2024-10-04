@@ -56,6 +56,8 @@ def main():
     settings["tag_weighting_multi_min"] = 1
     settings["tag_weighting_multi_max"] = 4
     settings["tag_weighting_exponent"] = 2
+    settings["tag_dropout_total_min"] = 25
+    settings["tag_dropout_percentage"] = 0.3
 
     # Load settings from YAML config
     with open(args.yaml, "r") as f:
@@ -199,13 +201,6 @@ def main():
     # for batch in tqdm(dataloader):
     # 	pass
     # return
-
-    # Optional Latent Caching Step:
-    def latent_collate(batch):
-        cache = torch.load(batch[0]["path"])
-        if "dropout" in batch:
-            cache[0]["dropout"] = True
-        return cache
     
     # Load the VAE
     vae = AutoencoderKL.from_pretrained(settings["model_name"], subfolder="vae")
@@ -218,7 +213,7 @@ def main():
         except Exception as e:
             raise Exception("Could not enable memory efficient attention. Make sure xformers is installed")
 
-    latent_cache = SD1CachedLatents(accelerator=accelerator, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"])
+    latent_cache = SD1CachedLatents(accelerator=accelerator, settings=settings, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"])
     # Create a latent cache if we're not going to load an existing one:
     if settings["create_latent_cache"] and not settings["use_latent_cache"]:
         # Ensure cache output directory exists:

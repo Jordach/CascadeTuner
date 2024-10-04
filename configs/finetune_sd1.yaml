@@ -75,8 +75,16 @@ text_optimizer_type: AdamW8bit
 # Path to the text encoder optimizer; useful for resuming runs; uncomment to use
 # text_enc_optim: /path/to/optim.pt
 
-# Whether to shuffle booru tags (Comma separated)
+# Whether to shuffle booru style tags (Comma separated)
 tag_shuffling: false
+
+# Settings starting with tag_ require tag_shuffling to be enabled.
+# How many tags minimum should be present when training?
+# This overrules tag_dropout_percentage
+# tag_dropout_total_min: 25
+
+# What percentage of tags should be dropped if there is more than the total minimum?
+# tag_dropout_percentage: 0.3
 
 # Uncomment these to make them usable
 # Location of the cached tag weighting dict (required to exist for weighted loss to work)
