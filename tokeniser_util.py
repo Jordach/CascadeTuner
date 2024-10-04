@@ -11,9 +11,13 @@ def shuffle_and_drop_tags(caption, settings):
 	num_tags = len(tags)
 	num_kept = max(settings["tag_dropout_total_min"], int(num_tags * (1 - settings["tag_dropout_percentage"])))
 
-	# Randomly pick which tags to keep
-	kept_keys = np.random.choice(num_tags, num_kept, replace=False)
-	kept_tags = [tags[i] for i in kept_keys]
+	# If num_kept equals num_tags, we don't need to use np.random.choice
+	if num_kept == num_tags:
+		kept_tags = tags
+	else:
+		# Randomly pick which tags to keep
+		kept_keys = np.random.choice(num_tags, num_kept, replace=False)
+		kept_tags = [tags[i] for i in kept_keys]
 
 	# Stitch all tags back into a singular string for processing by the tokenizer
 	shuffled_caption = ", ".join(tag.strip() for tag in kept_tags)
