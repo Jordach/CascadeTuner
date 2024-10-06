@@ -28,6 +28,9 @@ def add_tags_from_batch(tag_dict, captions):
 			else:
 				tag_dict[t] += 1
 
+def lerp(a, b, factor):
+	return a + (b - a) * factor
+
 def clamp(val, min_val, max_val):
 	return max(min(val, max_val), min_val)
 
@@ -73,5 +76,7 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 			else:
 				mult = 1
 			mults.append(mult)
-
-	return median([median(mults), list_average(mults)])
+	# This approximates EMA like weighting averaging
+	median_mult = median(mults)
+	mean_mult = list_average(mults)
+	return lerp(median_mult, mean_mult, 0.8)
