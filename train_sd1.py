@@ -51,11 +51,11 @@ def main():
     settings["text_enc_optim"] = "_____no_path.pt"
     settings["tag_weighting_path"] = "__no_path__" # Requires a valid path to function
     settings["tag_weighting_used"] = False
-    settings["tag_weighting_count_low"] = 500 # Anything under this count will be treated as multi_max
-    settings["tag_weighting_count_high"] = 5000 # Anything over this count will be treated as multi_min
+    settings["tag_weighting_count_low"] = 250 # Anything under this count will be treated as multi_max
+    settings["tag_weighting_count_high"] = 10000 # Anything over this count will be treated as multi_min
     settings["tag_weighting_multi_min"] = 1
     settings["tag_weighting_multi_max"] = 4
-    settings["tag_weighting_exponent"] = 2
+    settings["tag_weighting_exponent"] = 3.5
     settings["tag_dropout_total_min"] = 25
     settings["tag_dropout_percentage"] = 0.3
 

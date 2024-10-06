@@ -55,7 +55,9 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 				mult = clamp(mult, 0, 1)
 				if settings["tag_weighting_exponent"] > 1:
 					# Give it a curve to smooth lessen aggression of the mean
-					mult = ((mult * -1) ** settings["tag_weighting_exponent"]) + 1
+					mult = (1 - mult) ** settings["tag_weighting_exponent"]
+				else:
+					mult = mult * -1
 				mult = clamp(mult, 0, 1)
 				# Remap the 0-1 curve to the weighting range
 				mult = remap(
