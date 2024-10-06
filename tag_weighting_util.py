@@ -74,4 +74,4 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 				mult = 1
 			mults.append(mult)
 
-	return median(mults)
+	return median([median(mults), list_average(mults)])
