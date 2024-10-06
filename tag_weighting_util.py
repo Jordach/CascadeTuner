@@ -1,4 +1,5 @@
 import json
+from statistics import median
 
 def load_from_json_storage(path, tag_dict):
 	with open(path, "r", encoding="utf-8") as data:
@@ -73,4 +74,4 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 				mult = 1
 			mults.append(mult)
 
-	return list_average(mults)
+	return median(mults)
