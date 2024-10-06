@@ -46,7 +46,8 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 		tags = caption.split(",")
 		for tag in tags:
 			t = tag.strip()
-			if t in tag_dict:
+			# Also try and prevent pollution from low counts
+			if t in tag_dict and tag_dict[t] > settings["tag_weighting_count_low"]:
 				# Normalise to between 0-1
 				mult = remap(
 					tag_dict[t],
