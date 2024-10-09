@@ -3,7 +3,7 @@ import os
 import yaml
 import numpy as np
 import random
-import json
+import copy
 
 import torch
 import torch.nn.functional as F
@@ -31,6 +31,33 @@ from contextlib import nullcontext
 from tag_weighting_util import load_from_json_storage, save_to_json_storage, add_tags_from_batch, get_loss_multiplier_for_batch
 
 logger = get_logger(__name__)
+
+def process_latent_caches(settings, accelerator, original_latent_caches, latent_cache, print_info=False):
+    if settings["create_latent_cache"] or settings["use_latent_cache"]:
+        # Delete all old entries
+        latent_cache.reset_batch_list()
+
+        for batch in original_latent_caches:
+            latent_cache.add_latent_batch(batch, False)
+
+        # Handle duplicates for unconditional training
+        if settings["dropout"] > 0:
+            if len(original_latent_caches) > 100:
+                total_batches = int((len(original_latent_caches)-1) * settings["dropout"])
+
+                dropouts = random.sample(original_latent_caches, total_batches)
+                for batch in dropouts:
+                    latent_cache.add_latent_batch(batch, True)
+
+                if print_info:
+                    accelerator.print(f"Original Cached Step Count: {len(original_latent_caches)}")
+                    accelerator.print(f"Duplicated {len(dropouts)} caches for caption dropout.")
+                    accelerator.print(f"Total Cached Step Count: {len(latent_cache)}")
+        
+        dataloader = torch.utils.data.DataLoader(
+            latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, 
+        )
+        return dataloader
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Custom training script for SD1.")
@@ -222,11 +249,11 @@ def main():
 
     latent_cache = SD1CachedLatents(accelerator=accelerator, settings=settings, tokenizer=tokenizer, tag_shuffle=settings["tag_shuffling"])
     # Create a latent cache if we're not going to load an existing one:
+    original_latent_caches = []
     if settings["create_latent_cache"] and not settings["use_latent_cache"]:
         # Ensure cache output directory exists:
         if accelerator.is_main_process:
-            if not os.path.exists(settings["latent_cache_location"]):
-                os.makedirs(settings["latent_cache_location"])
+            os.makedirs(settings["latent_cache_location"], exist_ok=True)
 
         step = 0
         for batch in tqdm(dataloader, desc="Latent Caching"):
@@ -235,8 +262,9 @@ def main():
             del batch["images"]
 
             file_name = f"latent_cache_{settings['experiment_id']}_{step}.zpt"
-            save_torch_zstd(batch, os.path.join(settings["latent_cache_location"], file_name))
-            latent_cache.add_latent_batch(os.path.join(settings["latent_cache_location"], file_name), False)
+            cache_path = os.path.join(settings["latent_cache_location"], file_name)
+            save_torch_zstd(batch, cache_path)
+            original_latent_caches.append(cache_path)
             step += 1
         if args.cache_only:
             return 0
@@ -251,27 +279,11 @@ def main():
         accelerator.print("Loading media from the Latent Cache.")
         for cache in os.listdir(settings["latent_cache_location"]):
             latent_path = os.path.join(settings["latent_cache_location"], cache)
-            latent_cache.add_latent_batch(latent_path, False)
-        
-    # Handle duplicates for Latent Caching
-    if settings["create_latent_cache"] or settings["use_latent_cache"]:
-        if settings["dropout"] > 0:
-            if len(latent_cache) > 100:
-                if accelerator.is_main_process:
-                    print(f"Original Cached Step Count: {len(latent_cache)}")
-                total_batches = int((len(latent_cache)-1) * settings["dropout"])
+            original_latent_caches.append(latent_path)
 
-                dropouts = random.sample(latent_cache.get_batch_list(), total_batches)
-                for batch in dropouts:
-                    latent_cache.add_latent_batch(batch[0], True)
+        # Better method to handle latent caching
+        dataloader = process_latent_caches(settings, accelerator, original_latent_caches, latent_cache, print_info=True)
 
-                if accelerator.is_main_process:
-                    print(f"Duplicated {len(dropouts)} caches for caption dropout.")
-                    print(f"Total Cached Step Count: {len(latent_cache)}")
-        
-        dataloader = torch.utils.data.DataLoader(
-            latent_cache, batch_size=1, collate_fn=lambda x: x, shuffle=False, 
-        )
         # We don't need the VAE anymore - so just delete it from memory
         del vae
         vae = None
@@ -352,6 +364,7 @@ def main():
     steps_bar = tqdm(range(len(dataloader)), desc="Steps to Epoch", disable=not accelerator.is_local_main_process)
     epoch_bar = tqdm(range(settings["num_epochs"]), desc="Epochs", disable=not accelerator.is_local_main_process)
     total_steps = 0
+    total_epochs = 0
 
     torch.cuda.empty_cache()
 
@@ -370,7 +383,11 @@ def main():
     
     for e in epoch_bar:
         current_step = 0
+        # Reset the unconditional batches here per epoch
+        if e > 0:
+            dataloader = process_latent_caches(settings, accelerator, original_latent_caches, latent_cache, print_info=False)
         steps_bar.reset(total=len(dataloader))
+
         for step, batch in enumerate(dataloader):
             loss_weighting_mult = 1
             with accelerator.accumulate(unet, text_model) if settings["train_text_encoder"] else accelerator.accumulate(unet):
@@ -455,6 +472,7 @@ def main():
             accelerator.print(f"Model saved to: {epoch_path}")
             accelerator.wait_for_everyone()
         
+        total_epochs += 1
         settings["seed"] += 1
         set_seed(settings["seed"])
 

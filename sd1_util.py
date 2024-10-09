@@ -76,6 +76,9 @@ class SD1CachedLatents(Dataset):
 	def get_batch_list(self):
 		return self.batches
 	
+	def reset_batch_list(self):
+		self.batches = []
+	
 	def add_latent_batch(self, batch, dropout):
 		self.batches.append((batch, dropout))
 
