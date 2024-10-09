@@ -161,8 +161,8 @@ def main():
             torch.save(pre_dataset, f"{settings['dataset_cache']}")
             accelerator.print("Saved dataset cache.")
 
-        accelerator.print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
         pre_dataset.bucketize(settings["batch_size"])
+        accelerator.print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
         if "multi_aspect_ratio" in settings:
             one_over_ratios = []
             accelerator.print("Notice: Using custom supplied bucketing ratios")
