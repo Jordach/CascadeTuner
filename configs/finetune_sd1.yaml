@@ -113,6 +113,12 @@ local_dataset_path: []
 # Whether to reject images exceeding 1:x.yz ratio (Images will be tested as if they're portrait oriented - data will not be modified)
 reject_aspects: 3.75
 
+# Custom non-automated bucket ratios, will disable the automated bucket ratio system
+# For any positive ratio say 1.77 will be automatically creating it's counterpart as 1/1.77
+# so you do not need to add values less than one as these will be done automatically.
+# Uncomment this to enable a list of known good ratios
+# multi_aspect_ratio: [1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.33, 1.4, 1.45, 1.5, 1.55, 1.6, 1.66, 1.7, 1.778, 1.85, 1.9, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75]
+
 # Which Clip Skip value is wanted -1 default, -2 for CLIP skip 2 as seen in A1111 wrt/ NAIv1 inference:
 clip_skip: -1
 

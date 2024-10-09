@@ -47,31 +47,34 @@ def get_loss_multiplier_for_batch(tag_dict, settings, captions):
 		for tag in tags:
 			t = tag.strip()
 			# Also try and prevent pollution from low counts
-			if t in tag_dict and tag_dict[t] > settings["tag_weighting_count_low"]:
-				# Normalise to between 0-1
-				mult = remap(
-					tag_dict[t],
-					settings["tag_weighting_count_low"],
-					settings["tag_weighting_count_high"],
-					0,
-					1
-				)
-				# Clamp to prevent linear interpolation
-				mult = clamp(mult, 0, 1)
-				if settings["tag_weighting_exponent"] > 1:
-					# Give it a curve to smooth lessen aggression of the mean
-					mult = (1 - mult) ** settings["tag_weighting_exponent"]
+			if t in tag_dict:
+				if tag_dict[t] < settings["tag_weighting_count_low"]:
+					mult = 1
 				else:
-					mult = mult * -1
-				mult = clamp(mult, 0, 1)
-				# Remap the 0-1 curve to the weighting range
-				mult = remap(
-					mult,
-					0,
-					1,
-					settings["tag_weighting_multi_max"],
-					settings["tag_weighting_multi_min"]
-				)
+					# Normalise to between 0-1
+					mult = remap(
+						tag_dict[t],
+						settings["tag_weighting_count_low"],
+						settings["tag_weighting_count_high"],
+						0,
+						1
+					)
+					# Clamp to prevent linear interpolation
+					mult = clamp(mult, 0, 1)
+					if settings["tag_weighting_exponent"] > 1:
+						# Give it a curve to smooth lessen aggression of the mean
+						mult = (1 - mult) ** settings["tag_weighting_exponent"]
+					else:
+						mult = mult * -1
+					mult = clamp(mult, 0, 1)
+					# Remap the 0-1 curve to the weighting range
+					mult = remap(
+						mult,
+						0,
+						1,
+						settings["tag_weighting_multi_max"],
+						settings["tag_weighting_multi_min"]
+					)
 				# Clamp to prevent linear interpolation
 				mult = clamp(mult, settings["tag_weighting_multi_min"], settings["tag_weighting_multi_max"])
 			else:
