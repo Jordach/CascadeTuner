@@ -424,7 +424,7 @@ def main():
                     # Handle loss weighting for tags
                     if settings["tag_weighting_used"]:
                         loss_weighting_mult = get_loss_multiplier_for_batch(tag_weighting_dict, settings, batch[0]["captions"]) 
-                    loss = loss * loss_weighting_mult
+                        loss = loss * loss_weighting_mult
 
                     accelerator.backward(loss)
                     del timesteps, noise, latents, noisy_latents, text_embeds, target
