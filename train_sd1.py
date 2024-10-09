@@ -383,8 +383,9 @@ def main():
     
     for e in epoch_bar:
         current_step = 0
-        # Reset the unconditional batches here per epoch
-        if e > 0:
+        # Reset the unconditional batches here per epoch after the first one;
+        # since it's already had caches added - preserving the pRNG is important here
+        if total_epochs > 0:
             dataloader = process_latent_caches(settings, accelerator, original_latent_caches, latent_cache, print_info=False)
         steps_bar.reset(total=len(dataloader))
 
