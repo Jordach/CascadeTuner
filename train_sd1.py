@@ -161,6 +161,7 @@ def main():
             torch.save(pre_dataset, f"{settings['dataset_cache']}")
             accelerator.print("Saved dataset cache.")
 
+        accelerator.print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
         pre_dataset.bucketize(settings["batch_size"])
         if "multi_aspect_ratio" in settings:
             one_over_ratios = []
@@ -173,8 +174,7 @@ def main():
             accelerator.print("Notice: Using automated bucketing ratios")
             settings["multi_aspect_ratio"] = pre_dataset.get_buckets()
 
-        accelerator.print("Bucketing Info:")
-        accelerator.print(f"Total Invalid Files:  {pre_dataset.get_rejects()}")
+        # accelerator.print("Bucketing Info:")
 
     def pre_collate(batch):
         # Do NOT load images - save that for the second dataloader pass
