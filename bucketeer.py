@@ -183,10 +183,13 @@ class StrictBucketeer:
 	def _generate_bucket_sizes(self, aspect_ratios):
 		buckets = {}
 		for ratio in aspect_ratios:
-			w = int(((self.density/ratio)**0.5//self.factor)*self.factor)
-			h = int(((self.density*ratio)**0.5//self.factor)*self.factor)
+			if ratio >= 1:
+				w = int(((self.density/ratio)**0.5//self.factor)*self.factor)
+				h = int(((self.density*ratio)**0.5//self.factor)*self.factor)
+			else:
+				h = int(((self.density/ratio)**0.5//self.factor)*self.factor)
+				w = int(((self.density*ratio)**0.5//self.factor)*self.factor)
 			
-			# Ensure dimensions are multiples of factor
 			w = (w // self.factor) * self.factor
 			h = (h // self.factor) * self.factor
 			

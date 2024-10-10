@@ -169,6 +169,7 @@ def main():
             for bucket in settings["multi_aspect_ratio"]:
                 if bucket > 1:
                     one_over_ratios.append(1/bucket)
+            settings["multi_aspect_ratio"].extend(one_over_ratios)
             
         else:
             accelerator.print("Notice: Using automated bucketing ratios")
@@ -269,7 +270,7 @@ def main():
                 "aspect": batch["aspect"],
                 "bucket": batch["bucket"]
             })
-            
+
             with torch.no_grad():
                 batch["vae_encoded"] = vae_encode(batch["images"], vae)
             del batch["images"]
