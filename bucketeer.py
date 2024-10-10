@@ -187,8 +187,8 @@ class StrictBucketeer:
 				w = int(((self.density/ratio)**0.5//self.factor)*self.factor)
 				h = int(((self.density*ratio)**0.5//self.factor)*self.factor)
 			else:
-				h = int(((self.density/ratio)**0.5//self.factor)*self.factor)
 				w = int(((self.density*ratio)**0.5//self.factor)*self.factor)
+				h = int(((self.density/ratio)**0.5//self.factor)*self.factor)
 			
 			w = (w // self.factor) * self.factor
 			h = (h // self.factor) * self.factor
@@ -199,7 +199,6 @@ class StrictBucketeer:
 
 	def get_resize_and_crop_sizes(self, w, h):
 		aspect_ratio = w / h
-		# ratio_str = f"{aspect_ratio:.2f}"
 		
 		closest_ratio = min(self.buckets.keys(), key=lambda x: abs(float(x) - aspect_ratio))
 		target_size = self.buckets[closest_ratio]
@@ -210,7 +209,7 @@ class StrictBucketeer:
 		else:
 			resize_size = (int(w * target_size[1] / h), target_size[1])
 		
-		return resize_size, target_size, closest_ratio
+		return target_size, closest_ratio
 
 	def load_and_resize(self, item):
 		with warnings.catch_warnings():
@@ -221,8 +220,8 @@ class StrictBucketeer:
 			del image
 
 			# Get the resize and crop sizes
-			resize_size, crop_size, ratio = self.get_resize_and_crop_sizes(w, h)
-			resize_size = min(resize_size)
+			crop_size, ratio = self.get_resize_and_crop_sizes(w, h)
+			resize_size = min(crop_size)
 			
 			# Resize image
 			img = torchvision.transforms.functional.resize(

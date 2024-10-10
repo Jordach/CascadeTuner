@@ -64,7 +64,7 @@ for i in range(len(decoded_images)):
 
 # for partial in batch["tokens"]:
 # 	pos = 0
-# 	print(pos, partial)
+# 	#print(pos, partial)
 # 	decoded_texts = tokenizer.batch_decode(partial, skip_special_tokens=True)
 # 	for text in decoded_texts:
 # 		print(pos, text)
