@@ -166,14 +166,14 @@ def main():
         if "multi_aspect_ratio" in settings:
             one_over_ratios = []
             accelerator.print("Notice: Using custom supplied bucketing ratios")
-            custom_ratios = [f"{r:.2f}" for r in settings["multi_aspect_ratio"]]
-            accelerator.print(f"Custom Ratios:")
-            accelerator.print(f"{', '.join(r.strip() for r in custom_ratios)}")
             for bucket in settings["multi_aspect_ratio"]:
                 if bucket > 1:
                     one_over_ratios.append(1/bucket)
             settings["multi_aspect_ratio"].extend(one_over_ratios)
             
+            custom_ratios = [f"{r:.2f}" for r in settings["multi_aspect_ratio"]]
+            accelerator.print(f"Custom Ratios:")
+            accelerator.print(f"{', '.join(r.strip() for r in custom_ratios)}")
         else:
             accelerator.print("Notice: Using automated bucketing ratios")
             settings["multi_aspect_ratio"] = pre_dataset.get_buckets()
