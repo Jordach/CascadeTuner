@@ -243,7 +243,7 @@ class StrictBucketeer:
 					img = self.smartcrop(img)
 			file_path = f"dataset_debug.csv"
 			with open(file_path, "a") as f:
-				f.write(f"{w/h:.2f},{ratio:.2f},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
+				f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
 			return img, ratio
 
 	def __call__(self, item):
