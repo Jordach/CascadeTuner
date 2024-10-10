@@ -200,7 +200,7 @@ class StrictBucketeer:
 	def get_resize_and_crop_sizes(self, w, h, ratio=None):
 		# Round off decimal places until .2f to prevent rare cases of an input batch mismatching
 		# Or dependning on the latent caching function, use the aspect provided from the original bucketised dataset
-		aspect_ratio = float(f"{w / h:.2f}") if ratio is None else ratio
+		aspect_ratio = float(f"{w / h:.2f}") if ratio is None else float(ratio)
 		
 		closest_ratio = min(self.buckets.keys(), key=lambda x: abs(float(x) - aspect_ratio))
 		target_size = self.buckets[closest_ratio]
