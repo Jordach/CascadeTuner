@@ -219,15 +219,15 @@ def main():
         # rather than storing all transformed images in memory!
         img = batch[0]["images"]
         ratio = 1
+        aspect = batch[0]["aspect"]
         for i in range(0, len(batch[0]["images"])):
-            _img, _ratio = auto_bucketer(img[i])
+            _img, _ratio = auto_bucketer(img[i], ratio=aspect)
             ratio = _ratio
             images.append(_img)
         images = torch.stack(images)
         images = images.to(memory_format=torch.contiguous_format)
         images = images.to(accelerator.device)
         captions = batch[0]["caption"]
-        aspect = batch[0]["aspect"]
         # Tokenisation should be done during latent caching/runtime VAE encoding process to avoid storing lots of tokens in system memory.
         tokens, att_mask = tokenize_respecting_boundaries(tokenizer, captions)
         dropout = batch[0]["dropout"]

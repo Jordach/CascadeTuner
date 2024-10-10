@@ -197,21 +197,23 @@ class StrictBucketeer:
 			buckets[ratio_str] = (w, h)
 		return buckets
 
-	def get_resize_and_crop_sizes(self, w, h):
-		aspect_ratio = w / h
+	def get_resize_and_crop_sizes(self, w, h, ratio=None):
+		# Round off decimal places until .2f to prevent rare cases of an input batch mismatching
+		# Or dependning on the latent caching function, use the aspect provided from the original bucketised dataset
+		aspect_ratio = float(f"{w / h:.2f}") if ratio is None else ratio
 		
 		closest_ratio = min(self.buckets.keys(), key=lambda x: abs(float(x) - aspect_ratio))
 		target_size = self.buckets[closest_ratio]
 		
-		# Determine resize dimensions (resize smallest side to match target)
-		if w <= h:
-			resize_size = (target_size[0], int(h * target_size[0] / w))
-		else:
-			resize_size = (int(w * target_size[1] / h), target_size[1])
+		# # Determine resize dimensions (resize smallest side to match target)
+		# if w <= h:
+		# 	resize_size = (target_size[0], int(h * target_size[0] / w))
+		# else:
+		# 	resize_size = (int(w * target_size[1] / h), target_size[1])
 		
 		return target_size, closest_ratio
 
-	def load_and_resize(self, item):
+	def load_and_resize(self, item, ratio=None):
 		with warnings.catch_warnings():
 			warnings.simplefilter("ignore")
 			image = Image.open(item).convert("RGB")
@@ -220,7 +222,7 @@ class StrictBucketeer:
 			del image
 
 			# Get the resize and crop sizes
-			crop_size, ratio = self.get_resize_and_crop_sizes(w, h)
+			crop_size, ratio = self.get_resize_and_crop_sizes(w, h, ratio=ratio)
 			resize_size = min(crop_size)
 			
 			# Resize image
@@ -240,10 +242,11 @@ class StrictBucketeer:
 				elif self.crop_mode == 'smart':
 					self.smartcrop.output_size = crop_size
 					img = self.smartcrop(img)
-			file_path = f"dataset_debug.csv"
-			with open(file_path, "a") as f:
-				f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
+			
+			# file_path = f"dataset_debug.csv"
+			# with open(file_path, "a") as f:
+			# 	f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
 			return img, ratio
 
-	def __call__(self, item):
-		return self.load_and_resize(item)
+	def __call__(self, item, ratio=None):
+		return self.load_and_resize(item, ratio=ratio)
