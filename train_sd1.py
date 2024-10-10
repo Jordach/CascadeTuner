@@ -183,7 +183,9 @@ def main():
 
         if settings["tag_weighting_used"]:
             add_tags_from_batch(tag_weighting_dict, caption)
-        return {"images": images, "caption": caption, "dropout": False}
+        
+        aspect = batch[0]["aspects"]
+        return {"images": images, "caption": caption, "dropout": False, "aspect": aspect}
 
     pre_dataloader = DataLoader(
         pre_dataset, batch_size=settings["batch_size"], shuffle=False, collate_fn=pre_collate, pin_memory=False,
@@ -212,16 +214,20 @@ def main():
         # The reason for not unrolling the images in the prior dataloader was so we can load them only when training,
         # rather than storing all transformed images in memory!
         img = batch[0]["images"]
+        ratio = 1
         for i in range(0, len(batch[0]["images"])):
-            images.append(auto_bucketer(img[i]))
+            _img, _ratio = auto_bucketer(img[i])
+            ratio = _ratio
+            images.append(_img)
         images = torch.stack(images)
         images = images.to(memory_format=torch.contiguous_format)
         images = images.to(accelerator.device)
         captions = batch[0]["caption"]
+        aspect = batch[0]["aspect"]
         # Tokenisation should be done during latent caching/runtime VAE encoding process to avoid storing lots of tokens in system memory.
         tokens, att_mask = tokenize_respecting_boundaries(tokenizer, captions)
         dropout = batch[0]["dropout"]
-        return {"images": images, "tokens": tokens, "att_mask": att_mask, "captions": captions, "dropout": dropout}
+        return {"images": images, "tokens": tokens, "att_mask": att_mask, "captions": captions, "dropout": dropout, "aspect": aspect, "bucket": ratio}
 
     # Shuffle the dataset and initialise the dataloader if we're not latent caching
     set_seed(settings["seed"])
@@ -257,7 +263,13 @@ def main():
             os.makedirs(settings["latent_cache_location"], exist_ok=True)
 
         step = 0
-        for batch in tqdm(dataloader, desc="Latent Caching"):
+        latent_caching_bar = tqdm(dataloader, desc="Latent Caching")
+        for batch in latent_caching_bar:
+            latent_caching_bar.set_postfix({
+                "aspect": batch["aspect"],
+                "bucket": batch["bucket"]
+            })
+            
             with torch.no_grad():
                 batch["vae_encoded"] = vae_encode(batch["images"], vae)
             del batch["images"]

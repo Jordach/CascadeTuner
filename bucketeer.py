@@ -207,7 +207,7 @@ class StrictBucketeer:
 		else:
 			resize_size = (int(w * target_size[1] / h), target_size[1])
 		
-		return resize_size, target_size
+		return resize_size, target_size, closest_ratio
 
 	def load_and_resize(self, item):
 		with warnings.catch_warnings():
@@ -218,8 +218,8 @@ class StrictBucketeer:
 			del image
 
 			# Get the resize and crop sizes
-			resize_size, crop_size = self.get_resize_and_crop_sizes(w, h)
-			resize_size = min(crop_size)
+			resize_size, crop_size, ratio = self.get_resize_and_crop_sizes(w, h)
+			resize_size = min(resize_size)
 			
 			# Resize image
 			img = torchvision.transforms.functional.resize(
@@ -238,10 +238,10 @@ class StrictBucketeer:
 				elif self.crop_mode == 'smart':
 					self.smartcrop.output_size = crop_size
 					img = self.smartcrop(img)
-			# file_path = f"dataset_debug.csv"
-			# with open(file_path, "a") as f:
-			# 	f.write(f"{w/h:.2f},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
-			return img
+			file_path = f"dataset_debug.csv"
+			with open(file_path, "a") as f:
+				f.write(f"{w/h:.2f},{ratio:.2f},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
+			return img, ratio
 
 	def __call__(self, item):
 		return self.load_and_resize(item)
