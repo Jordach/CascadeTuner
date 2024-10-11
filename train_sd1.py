@@ -285,6 +285,8 @@ def main():
             step += 1
         if args.cache_only:
             return 0
+        # Better method to handle latent caching
+        dataloader = process_latent_caches(settings, accelerator, original_latent_caches, latent_cache, print_info=True)
     elif settings["use_latent_cache"]:
         # Load all latent caches from disk. Note that batch size is ignored here and can theoretically be mixed.
         if not os.path.exists(settings["latent_cache_location"]):
@@ -404,6 +406,7 @@ def main():
         # since it's already had caches added - preserving the pRNG is important here
         if total_epochs > 0:
             dataloader = process_latent_caches(settings, accelerator, original_latent_caches, latent_cache, print_info=False)
+            dataloader = accelerator.prepare(dataloader)
         steps_bar.reset(total=len(dataloader))
 
         for step, batch in enumerate(dataloader):
