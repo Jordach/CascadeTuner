@@ -17,6 +17,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import compute_snr
 from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -435,9 +436,31 @@ def main():
                     target = noise
 
                     if "min_snr_gamma" in settings:
+                        # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                        # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                        # This is discussed in Section 4.2 of the same paper.
+                        snr = compute_snr(noise_scheduler, timesteps)
+                        base_weight = (
+                            torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+                        )
+
+                        if noise_scheduler.config.prediction_type == "v_prediction":
+                            # Velocity objective needs to be floored to an SNR weight of one.
+                            mse_loss_weights = base_weight + 1
+                        else:
+                            # Epsilon and sample both use the same loss weights.
+                            mse_loss_weights = base_weight
+
+                        # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
+                        # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
+                        # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
+                        mse_loss_weights[snr == 0] = 1.0
+
+                        # We first calculate the original loss. Then we mean over the non-batch dimensions and
+                        # rebalance the sample-wise losses with their respective loss weights.
+                        # Finally, we take the mean of the rebalanced loss.
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        loss = loss.mean([1, 2, 3])
-                        loss = minSNR_weighting_loss(loss, timesteps, noise_scheduler, settings["min_snr_gamma"])
+                        loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                         loss = loss.mean()
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
