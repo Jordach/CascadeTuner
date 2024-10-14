@@ -44,10 +44,21 @@ def minSNR_weighting(timesteps, noise_scheduler, gamma):
 	alphas = noise_scheduler.alphas_cumprod
 	sqrt_alphas = torch.sqrt(alphas)
 	sqrt_minus_one_alphas = torch.sqrt(1.0 - alphas)
-	all_snr = (sqrt_alphas / sqrt_minus_one_alphas) ** 2
+
+	# Add small epsilon to avoid division by zero
+	epsilon = 1e-8
+	all_snr = (sqrt_alphas / (sqrt_minus_one_alphas + epsilon)) ** 2
 	snr = torch.stack([all_snr[t] for t in timesteps])
-	gamma_over = torch.div(torch.ones_like(snr) * gamma, snr)
-	snr_weight = torch.minimum(gamma_over, torch.ones_like(gamma_over)).float()
+
+	# Clip SNR values to avoid extremely large numbers
+	snr = torch.clamp(snr, min=1e-8, max=1e8)
+
+	gamma_over_snr = gamma / snr
+	snr_weight = torch.minimum(gamma_over_snr, torch.ones_like(gamma_over_snr)).float()
+
+	# Ensure weights are between 0 and 1
+	snr_weight = torch.clamp(snr_weight, min=0.0, max=1.0)
+
 	return snr_weight
 
 def count_trainable_params(model):

@@ -453,7 +453,8 @@ def main():
                         # Treat each timestep as a separate task
                         multi_task_loss = timestep_losses.mean()
                         
-                        loss = multi_task_loss
+                        # Clip the loss to avoid extremely large values
+                        loss = torch.clamp(multi_task_loss, max=1000.0)
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
