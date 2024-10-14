@@ -21,7 +21,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from bucketeer import StrictBucketeer
-from core_util import minSNR_weighting
+from core_util import minSNR_weighting_loss
 from dataset_util import BucketWalker
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from optim_util import get_optimizer, step_adafactor
@@ -435,26 +435,10 @@ def main():
                     target = noise
 
                     if "min_snr_gamma" in settings:
-                        # Calculate MSE loss without reduction
-                        mse_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        
-                        # Calculate MinSNR weights
-                        snr_weights = minSNR_weighting(timesteps, noise_scheduler, settings["min_snr_gamma"])
-                        
-                        # Reshape weights to match loss dimensions
-                        snr_weights = snr_weights.view(-1, 1, 1, 1)
-                        
-                        # Apply weights to each timestep's loss
-                        weighted_losses = mse_loss * snr_weights
-                        
-                        # Sum losses across spatial dimensions
-                        timestep_losses = weighted_losses.sum(dim=[1, 2, 3])
-                        
-                        # Treat each timestep as a separate task
-                        multi_task_loss = timestep_losses.mean()
-                        
-                        # Clip the loss to avoid extremely large values
-                        loss = torch.clamp(multi_task_loss, max=1000.0)
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        loss = loss.mean([1, 2, 3])
+                        loss = minSNR_weighting_loss(loss, timesteps, noise_scheduler, settings["min_snr_gamma"])
+                        loss = loss.mean()
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
