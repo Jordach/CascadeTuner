@@ -441,7 +441,7 @@ def main():
                         # This is discussed in Section 4.2 of the same paper.
                         snr = compute_snr(noise_scheduler, timesteps)
                         base_weight = (
-                            torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+                            torch.stack([snr, settings["min_snr_gamma"] * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                         )
 
                         if noise_scheduler.config.prediction_type == "v_prediction":
