@@ -335,7 +335,7 @@ def main():
     else:
         raise ValueError("Cannot load Unet optimizer from disk, does it exist?")
 
-    if settings["optimizer_type"] == "adafactorstoch":
+    if settings["optimizer_type"].lower() == "adafactorstoch":
         unet_optimizer.step = step_adafactor.__get__(unet_optimizer, transformers.optimization.Adafactor)
     
     unet_scheduler = get_scheduler(
@@ -435,12 +435,27 @@ def main():
                     target = noise
 
                     if "min_snr_gamma" in settings:
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        loss = loss.mean([1, 2, 3])
-                        loss = minSNR_weighting(loss, timesteps, noise_scheduler, settings["min_snr_gamma"])
+                        # Calculate MSE loss without reduction
+                        mse_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        
+                        # Calculate MinSNR weights
+                        snr_weights = minSNR_weighting(timesteps, noise_scheduler, settings["min_snr_gamma"])
+                        
+                        # Reshape weights to match loss dimensions
+                        snr_weights = snr_weights.view(-1, 1, 1, 1)
+                        
+                        # Apply weights to each timestep's loss
+                        weighted_losses = mse_loss * snr_weights
+                        
+                        # Sum losses across spatial dimensions
+                        timestep_losses = weighted_losses.sum(dim=[1, 2, 3])
+                        
+                        # Treat each timestep as a separate task
+                        multi_task_loss = timestep_losses.mean()
+                        
+                        loss = multi_task_loss
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                    loss = loss.mean()
 
                     # Handle loss weighting for tags
                     if settings["tag_weighting_used"]:

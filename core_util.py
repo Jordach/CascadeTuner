@@ -29,7 +29,7 @@ from torch.distributed.fsdp import (
 EXPECTED = "___REQUIRED___"
 EXPECTED_TRAIN = "___REQUIRED_TRAIN___"
 
-def minSNR_weighting(loss, timesteps, noise_scheduler, gamma):
+def minSNR_weighting_loss(loss, timesteps, noise_scheduler, gamma):
 	alphas = noise_scheduler.alphas_cumprod
 	sqrt_alphas = torch.sqrt(alphas)
 	sqrt_minus_one_alphas = torch.sqrt(1.0 - alphas)
@@ -39,6 +39,16 @@ def minSNR_weighting(loss, timesteps, noise_scheduler, gamma):
 	snr_weight = torch.minimum(gamma_over, torch.ones_like(gamma_over)).float()
 	snr_loss = loss * snr_weight
 	return snr_loss
+
+def minSNR_weighting(timesteps, noise_scheduler, gamma):
+	alphas = noise_scheduler.alphas_cumprod
+	sqrt_alphas = torch.sqrt(alphas)
+	sqrt_minus_one_alphas = torch.sqrt(1.0 - alphas)
+	all_snr = (sqrt_alphas / sqrt_minus_one_alphas) ** 2
+	snr = torch.stack([all_snr[t] for t in timesteps])
+	gamma_over = torch.div(torch.ones_like(snr) * gamma, snr)
+	snr_weight = torch.minimum(gamma_over, torch.ones_like(gamma_over)).float()
+	return snr_weight
 
 def count_trainable_params(model):
 	return sum(param.numel() for param in model.parameters() if param.requires_grad)

@@ -6,17 +6,24 @@ import torch
 from torch import Tensor, optim
 import transformers
 
+adamw_config = {
+	"betas": (0.9, 0.999),
+	"weight_decay": 1e-2
+}
+
 def get_optimizer(optim_choice, settings):
 	optimizer_type = optim_choice.lower()
 	optimizer_kwargs = {}
 	if optimizer_type == "adamw":
 		optimizer = optim.AdamW
+		# optimizer_kwargs = optimizer_kwargs | adamw_config
 	elif optimizer_type == "adamw8bit":
 		try:
 			import bitsandbytes as bnb
 		except ImportError:
 			raise ImportError("Please ensure bitsandbytes is installed: pip install bitsandbytes")
 		optimizer = bnb.optim.AdamW8bit
+		# optimizer_kwargs = optimizer_kwargs | adamw_config
 	elif optimizer_type == "compass":
 		try:
 			from compass_optimizer.compass import Compass
