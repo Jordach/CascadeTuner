@@ -88,54 +88,55 @@ def tokenize_respecting_boundaries(tokenizer, captions, max_length=75):
 
 	return tokenized_captions_list, attention_masks_list
 
-def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokenizer, settings, batch_size):
-	text_embeddings = None
-	text_embeddings_pool = None
+def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokenizer, settings, batch_size, text_encoder_context):
+	with text_encoder_context:
+		text_embeddings = None
+		text_embeddings_pool = None
 
-	# Token concatenation things:
-	max_length = tokenizer.model_max_length
-	max_standard_tokens = max_length - 2
-	token_chunks_limit = math.ceil(settings["max_token_limit"] / max_standard_tokens)
+		# Token concatenation things:
+		max_length = tokenizer.model_max_length
+		max_standard_tokens = max_length - 2
+		token_chunks_limit = math.ceil(settings["max_token_limit"] / max_standard_tokens)
 
-	if token_chunks_limit < 1:
-		token_chunks_limit = 1
+		if token_chunks_limit < 1:
+			token_chunks_limit = 1
 
-	if dropout:
-		# Do not train the text encoder when getting empty embeds
-		if settings["train_text_encoder"]:
-			text_model.eval()
-		captions_unpooled = ["" for _ in range(batch_size)]
-		clip_tokens_unpooled = tokenizer(captions_unpooled, truncation=True, padding="max_length",
-										max_length=tokenizer.model_max_length,
-										return_tensors="pt").to(accelerator.device)
+		if dropout:
+			# Do not train the text encoder when getting empty embeds
+			if settings["train_text_encoder"]:
+				text_model.eval()
+			captions_unpooled = ["" for _ in range(batch_size)]
+			clip_tokens_unpooled = tokenizer(captions_unpooled, truncation=True, padding="max_length",
+											max_length=tokenizer.model_max_length,
+											return_tensors="pt").to(accelerator.device)
 
-		text_encoder_output = accelerator.unwrap_model(text_model)(**clip_tokens_unpooled, output_hidden_states=True) if accelerator.num_processes > 1 else text_model(**clip_tokens_unpooled, output_hidden_states=True)
-		text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
-		text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
-		# Restore training mode for the text encoder
-		if settings["train_text_encoder"]:
-			text_model.train()
-	else:
-		for chunk_id in range(len(captions)):
-			# Hard limit the tokens to fit in memory for the rare event that latent caches that somehow exceed the limit.
-			if chunk_id > (token_chunks_limit):
-				break
+			text_encoder_output = accelerator.unwrap_model(text_model)(**clip_tokens_unpooled, output_hidden_states=True) if accelerator.num_processes > 1 else text_model(**clip_tokens_unpooled, output_hidden_states=True)
+			text_embeddings = text_encoder_output.hidden_states[settings["clip_skip"]]
+			text_embeddings_pool = text_encoder_output.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
+			# Restore training mode for the text encoder
+			if settings["train_text_encoder"]:
+				text_model.train()
+		else:
+			for chunk_id in range(len(captions)):
+				# Hard limit the tokens to fit in memory for the rare event that latent caches that somehow exceed the limit.
+				if chunk_id > (token_chunks_limit):
+					break
 
-			token_chunk = captions[chunk_id].to(accelerator.device)
-			token_chunk = torch.cat((torch.full((token_chunk.shape[0], 1), tokenizer.bos_token_id).to(accelerator.device), token_chunk, torch.full((token_chunk.shape[0], 1), tokenizer.eos_token_id).to(accelerator.device)), 1)
-			attn_chunk = att_mask[chunk_id].to(accelerator.device)
-			attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device)), 1)
-			# First 75 tokens we allow BOS to not be masked - otherwise we mask them out
-			fake_text_model = accelerator.unwrap_model(text_model) if accelerator.num_processes > 1 else text_model
-			# encode
-			text_encoder_output = fake_text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
-			hidden_states = text_encoder_output["hidden_states"][settings["clip_skip"]]
-			text_embed = fake_text_model.text_model.final_layer_norm(hidden_states)
-			if text_embeddings is None:
-				text_embeddings = text_embed
-				text_embeddings_pool = hidden_states.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
-			else:
-				text_embeddings = torch.cat((text_embeddings, text_embed), dim=-2)
-				# text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2) if "text_embeds" in text_encoder_output else None
+				token_chunk = captions[chunk_id].to(accelerator.device)
+				token_chunk = torch.cat((torch.full((token_chunk.shape[0], 1), tokenizer.bos_token_id).to(accelerator.device), token_chunk, torch.full((token_chunk.shape[0], 1), tokenizer.eos_token_id).to(accelerator.device)), 1)
+				attn_chunk = att_mask[chunk_id].to(accelerator.device)
+				attn_chunk = torch.cat((torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device), attn_chunk, torch.full((attn_chunk.shape[0], 1), 1).to(accelerator.device)), 1)
+				# First 75 tokens we allow BOS to not be masked - otherwise we mask them out
+				fake_text_model = accelerator.unwrap_model(text_model) if accelerator.num_processes > 1 else text_model
+				# encode
+				text_encoder_output = fake_text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
+				hidden_states = text_encoder_output["hidden_states"][settings["clip_skip"]]
+				text_embed = fake_text_model.text_model.final_layer_norm(hidden_states)
+				if text_embeddings is None:
+					text_embeddings = text_embed
+					text_embeddings_pool = hidden_states.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
+				else:
+					text_embeddings = torch.cat((text_embeddings, text_embed), dim=-2)
+					# text_embeddings_pool = torch.cat((text_embeddings_pool, text_encoder_output.text_embeds.unsqueeze(1)), dim=-2) if "text_embeds" in text_encoder_output else None
 
-	return text_embeddings, text_embeddings_pool
+		return text_embeddings, text_embeddings_pool

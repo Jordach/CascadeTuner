@@ -427,9 +427,7 @@ def main():
 
                     noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                    with text_encoder_context:
-                        text_embeds = None
-                        text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
+                    text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
                     
                     model_pred = unet(noisy_latents, timesteps, text_embeds).sample
                     target = noise
