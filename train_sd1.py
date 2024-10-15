@@ -275,8 +275,7 @@ def main():
                 "bucket": batch["bucket"]
             })
 
-            with torch.no_grad():
-                batch["vae_encoded"] = vae_encode(batch["images"], vae)
+            batch["vae_encoded"] = vae_encode(batch["images"], vae)
             del batch["images"]
 
             file_name = f"latent_cache_{settings['experiment_id']}_{step}.zpt"
@@ -402,6 +401,7 @@ def main():
         accelerator.print("Using minSNR timestep weighting.")
     
     for e in epoch_bar:
+        unet.train()
         current_step = 0
         # Reset the unconditional batches here per epoch after the first one;
         # since it's already had caches added - preserving the pRNG is important here
@@ -417,7 +417,7 @@ def main():
                 with accelerator.autocast():
                     captions = batch[0]["tokens"]
                     attn_mask = batch[0]["att_mask"]
-                    latents = batch[0]["vae_encoded"]
+                    latents = batch[0]["vae_encoded"].detach() # Detach prevents already cached latents with requires_grad==True causing issues
                     dropout = batch[0]["dropout"]
                     batch_size = len(batch[0]["captions"])
 
@@ -429,7 +429,6 @@ def main():
 
                     with text_encoder_context:
                         text_embeds = None
-                        text_pool = None
                         text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size)
                     
                     model_pred = unet(noisy_latents, timesteps, text_embeds).sample
@@ -465,7 +464,7 @@ def main():
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
-                    # Handle loss weighting for tags
+                    # Handle loss weighting for rare tags
                     if settings["tag_weighting_used"]:
                         loss_weighting_mult = get_loss_multiplier_for_batch(tag_weighting_dict, settings, batch[0]["captions"]) 
                         loss = loss * loss_weighting_mult
@@ -474,7 +473,7 @@ def main():
                     del timesteps, noise, latents, noisy_latents, text_embeds, target
 
                     if accelerator.sync_gradients:
-                        grad_norm = accelerator.clip_grad_norm_(itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters(), 1.0)
+                        grad_norm = accelerator.clip_grad_norm_((itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters()), 1.0)
                         last_grad_norm = grad_norm.mean().item()
                     
                     unet_optimizer.step()

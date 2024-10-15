@@ -13,9 +13,10 @@ from contextlib import contextmanager
 from io import StringIO
 
 def vae_encode(images, vae):
-	_images = images.to(dtype=vae.dtype)
-	latents = vae.encode(_images).latent_dist.sample() * vae.config.scaling_factor
-	return latents
+	with torch.no_grad():
+		_images = images.to(dtype=vae.dtype)
+		latents = vae.encode(_images).latent_dist.sample() * vae.config.scaling_factor
+		return latents
 
 vae_preprocess = transforms.Compose([
 	transforms.ToTensor(),
