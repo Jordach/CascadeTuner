@@ -274,22 +274,20 @@ def main():
             # Quicker way to debug dataloader
             if step < settings["cache_skip"]:
                 step += 1
-                latent_caching_bar.update(1)
-                continue
+            else:
+                latent_caching_bar.set_postfix({
+                    "aspect": batch["aspect"],
+                    "bucket": batch["bucket"]
+                })
 
-            latent_caching_bar.set_postfix({
-                "aspect": batch["aspect"],
-                "bucket": batch["bucket"]
-            })
+                batch["vae_encoded"] = vae_encode(batch["images"], vae)
+                del batch["images"]
 
-            batch["vae_encoded"] = vae_encode(batch["images"], vae)
-            del batch["images"]
-
-            file_name = f"latent_cache_{settings['experiment_id']}_{step}.zpt"
-            cache_path = os.path.join(settings["latent_cache_location"], file_name)
-            save_torch_zstd(batch, cache_path)
-            original_latent_caches.append(cache_path)
-            step += 1
+                file_name = f"latent_cache_{settings['experiment_id']}_{step}.zpt"
+                cache_path = os.path.join(settings["latent_cache_location"], file_name)
+                save_torch_zstd(batch, cache_path)
+                original_latent_caches.append(cache_path)
+                step += 1
         if args.cache_only:
             return 0
         # Better method to handle latent caching
