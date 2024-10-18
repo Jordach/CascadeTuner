@@ -22,7 +22,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from bucketeer import StrictBucketeer
-from core_util import minSNR_weighting_loss
+from core_util import minSNR_weighting
 from dataset_util import BucketWalker
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from optim_util import get_optimizer, step_adafactor
@@ -433,32 +433,26 @@ def main():
                     target = noise
 
                     if "min_snr_gamma" in settings:
-                        # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
-                        # Since we predict the noise instead of x_0, the original formulation is slightly changed.
-                        # This is discussed in Section 4.2 of the same paper.
-                        snr = compute_snr(noise_scheduler, timesteps)
-                        base_weight = (
-                            torch.stack([snr, settings["min_snr_gamma"] * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
-                        )
-
-                        if noise_scheduler.config.prediction_type == "v_prediction":
-                            # Velocity objective needs to be floored to an SNR weight of one.
-                            mse_loss_weights = base_weight + 1
-                        else:
-                            # Epsilon and sample both use the same loss weights.
-                            mse_loss_weights = base_weight
-
-                        # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
-                        # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
-                        # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
-                        mse_loss_weights[snr == 0] = 1.0
-
-                        # We first calculate the original loss. Then we mean over the non-batch dimensions and
-                        # rebalance the sample-wise losses with their respective loss weights.
-                        # Finally, we take the mean of the rebalanced loss.
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
-                        loss = loss.mean()
+                        # Calculate MSE loss without reduction
+                        mse_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        
+                        # Calculate MinSNR weights
+                        snr_weights = minSNR_weighting(timesteps, noise_scheduler, settings["min_snr_gamma"])
+                        
+                        # Reshape weights to match loss dimensions
+                        snr_weights = snr_weights.view(-1, 1, 1, 1)
+                        
+                        # Apply weights to each timestep's loss
+                        weighted_losses = mse_loss * snr_weights
+                        
+                        # Sum losses across spatial dimensions
+                        timestep_losses = weighted_losses.sum(dim=[1, 2, 3])
+                        
+                        # Treat each timestep as a separate task
+                        multi_task_loss = timestep_losses.mean()
+                        
+                        # Clip the loss to avoid extremely large values
+                        loss = torch.clamp(multi_task_loss, max=1000.0)
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 

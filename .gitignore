@@ -8,3 +8,4 @@ venv/
 compass_optimizer/*
 compass_optimizer/
 decoded_image*
+minsnr_weighting_plot.png

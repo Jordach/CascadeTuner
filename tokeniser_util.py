@@ -4,24 +4,48 @@ import math
 import random
 import numpy as np
 
-def shuffle_and_drop_tags(caption, settings):
-	tags = caption.split(",")
+def shuffle_and_drop_tags(caption, settings, always_keep=None):
+	tags = [tag.strip() for tag in caption.split(",")]
 	random.shuffle(tags)
-	# Get number of tags to keep.
-	num_tags = len(tags)
-	num_kept = max(settings["tag_dropout_total_min"], int(num_tags * (1 - settings["tag_dropout_percentage"])))
 
-	# If num_kept equals num_tags, we don't need to use np.random.choice
-	if num_kept >= num_tags:
-		kept_tags = tags
+	# Determine which tags to always keep
+	always_keep_tags = set()
+	if always_keep:
+		if isinstance(always_keep, str):
+			always_keep_tags.add(always_keep)
+		elif isinstance(always_keep, dict):
+			always_keep_tags.update(always_keep.keys())
+		elif isinstance(always_keep, (list, tuple, set)):
+			always_keep_tags.update(always_keep)
+
+	# Separate always-keep tags and other tags
+	keep_tags = [tag for tag in tags if tag in always_keep_tags]
+	other_tags = [tag for tag in tags if tag not in always_keep_tags]
+
+	if "tag_dropout_percentage" in settings:
+		# Only dropout if valid values are used
+		if settings["tag_dropout_percentage"] < 1 and settings["tag_dropout_percentage"] >= 0:
+			kept_tags = other_tags
+		else:
+			num_tags = len(other_tags)
+			num_kept = max(
+				settings["tag_dropout_total_min"],
+				int(num_tags * (1 - settings["tag_dropout_percentage"]))
+			)
+
+			if num_kept >= num_tags:
+				kept_tags = other_tags
+			else:
+				kept_keys = np.random.choice(num_tags, num_kept, replace=False)
+				kept_tags = [other_tags[i] for i in kept_keys]
 	else:
-		# Randomly pick which tags to keep
-		kept_keys = np.random.choice(num_tags, num_kept, replace=False)
-		kept_tags = [tags[i] for i in kept_keys]
+		kept_tags = other_tags
 
-	# Stitch all tags back into a singular string for processing by the tokenizer
-	shuffled_caption = ", ".join(tag.strip() for tag in kept_tags)
-	return shuffled_caption
+	# Combine always-keep tags with the randomly kept tags
+	final_tags = keep_tags + kept_tags
+	random.shuffle(final_tags)
+
+	return ",".join(final_tags)
 
 def tokenize_respecting_boundaries(tokenizer, captions, max_length=75):
 	batch_size = len(captions)

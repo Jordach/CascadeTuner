@@ -223,7 +223,25 @@ class StrictBucketeer:
 
 			# Get the resize and crop sizes
 			crop_size, ratio = self.get_resize_and_crop_sizes(w, h, ratio=ratio)
-			resize_size = min(crop_size)
+			
+			# Calculate resize dimensions to exceed or match crop size
+			if w == h:
+				# For square images, directly use the crop size
+				resize_size = crop_size
+			elif w < h:
+				resize_w = crop_size[0]
+				resize_h = int(resize_w * (h / w))
+				while resize_h < crop_size[1]:
+					resize_w += 1
+					resize_h = int(resize_w * (h / w))
+				resize_size = (resize_h, resize_w)
+			else:
+				resize_h = crop_size[1]
+				resize_w = int(resize_h * (w / h))
+				while resize_w < crop_size[0]:
+					resize_h += 1
+					resize_w = int(resize_h * (w / h))
+				resize_size = (resize_h, resize_w)
 			
 			# Resize image
 			img = torchvision.transforms.functional.resize(
