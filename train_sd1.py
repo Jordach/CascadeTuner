@@ -270,6 +270,12 @@ def main():
         step = 0
         latent_caching_bar = tqdm(dataloader, desc="Latent Caching")
         for batch in latent_caching_bar:
+            # Quicker way to debug dataloader
+            if "cache_skip" in settings:
+                if step < settings["cache_step"]:
+                    step += 1
+                    continue
+
             latent_caching_bar.set_postfix({
                 "aspect": batch["aspect"],
                 "bucket": batch["bucket"]
@@ -409,6 +415,7 @@ def main():
             accelerator.wait_for_everyone()
             dataloader = process_latent_caches(settings, accelerator, original_latent_caches, latent_cache, print_info=False)
             dataloader = accelerator.prepare(dataloader)
+            accelerator.wait_for_everyone()
         steps_bar.reset(total=len(dataloader))
 
         for step, batch in enumerate(dataloader):
