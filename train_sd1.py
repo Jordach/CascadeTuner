@@ -274,7 +274,7 @@ def main():
             # Quicker way to debug dataloader
             if step < settings["cache_skip"]:
                 step += 1
-                latent_caching_bar.set_postfix({"skip": step})
+                latent_caching_bar.update(1)
                 continue
 
             latent_caching_bar.set_postfix({
