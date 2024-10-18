@@ -20,8 +20,8 @@ batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_beta_3134.zpt"
 # 	print(x)
 # 	break
 
-print(batch.keys())
-print(batch["aspect"], batch["bucket"])
+# print(batch.keys())
+# print(batch["aspect"], batch["bucket"])
 
 # Load the VAE model
 vae = AutoencoderKL.from_pretrained("X:\sd1-5", subfolder="vae")

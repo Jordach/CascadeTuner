@@ -4,6 +4,7 @@ from torchtools.transforms import SmartCrop
 import math
 from PIL import Image
 import warnings
+import copy
 
 class Bucketeer():
 	def __init__(
@@ -211,7 +212,7 @@ class StrictBucketeer:
 		# else:
 		# 	resize_size = (int(w * target_size[1] / h), target_size[1])
 		
-		return target_size, closest_ratio
+		return target_size[0], target_size[1], closest_ratio
 
 	def load_and_resize(self, item, ratio=None):
 		with warnings.catch_warnings():
@@ -222,25 +223,26 @@ class StrictBucketeer:
 			del image
 
 			# Get the resize and crop sizes
-			crop_size, ratio = self.get_resize_and_crop_sizes(w, h, ratio=ratio)
+			crop_w, crop_h, closest_ratio = self.get_resize_and_crop_sizes(w, h, ratio=ratio)
 			
 			# Calculate resize dimensions to exceed or match crop size
+			actual_ratio = max(w, h) / min(w, h)
 			if w == h:
 				# For square images, directly use the crop size
-				resize_size = crop_size
+				resize_size = (crop_h, crop_w)
 			elif w < h:
-				resize_w = crop_size[0]
-				resize_h = int(resize_w * (h / w))
-				while resize_h < crop_size[1]:
+				resize_w = copy.deepcopy(crop_w) # Don't make a variable alias, causes problems
+				resize_h = int(resize_w * actual_ratio)
+				while resize_h <= crop_w:
 					resize_w += 1
-					resize_h = int(resize_w * (h / w))
+					resize_h = int(resize_w * actual_ratio)
 				resize_size = (resize_h, resize_w)
 			else:
-				resize_h = crop_size[1]
-				resize_w = int(resize_h * (w / h))
-				while resize_w < crop_size[0]:
+				resize_h = copy.deepcopy(crop_h) # Don't make a variable alias, causes problems
+				resize_w = int(resize_h * actual_ratio)
+				while resize_w <= crop_h:
 					resize_h += 1
-					resize_w = int(resize_h * (w / h))
+					resize_w = int(resize_h * actual_ratio)
 				resize_size = (resize_h, resize_w)
 			
 			# Resize image
@@ -252,6 +254,7 @@ class StrictBucketeer:
 			)
 			
 			# Crop if necessary
+			crop_size = (crop_h, crop_w)
 			if img.shape[-2:] != crop_size:
 				if self.crop_mode == 'center':
 					img = torchvision.transforms.functional.center_crop(img, crop_size)
@@ -264,7 +267,7 @@ class StrictBucketeer:
 			# file_path = f"dataset_debug.csv"
 			# with open(file_path, "a") as f:
 			# 	f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
-			return img, ratio
+			return img, closest_ratio
 
 	def __call__(self, item, ratio=None):
 		return self.load_and_resize(item, ratio=ratio)
