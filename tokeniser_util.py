@@ -24,20 +24,17 @@ def shuffle_and_drop_tags(caption, settings, always_keep=None):
 
 	if "tag_dropout_percentage" in settings:
 		# Only dropout if valid values are used
-		if settings["tag_dropout_percentage"] < 1 and settings["tag_dropout_percentage"] >= 0:
+		num_tags = len(other_tags)
+		num_kept = max(
+			settings["tag_dropout_total_min"],
+			int(num_tags * (1 - settings["tag_dropout_percentage"]))
+		)
+
+		if num_kept >= num_tags:
 			kept_tags = other_tags
 		else:
-			num_tags = len(other_tags)
-			num_kept = max(
-				settings["tag_dropout_total_min"],
-				int(num_tags * (1 - settings["tag_dropout_percentage"]))
-			)
-
-			if num_kept >= num_tags:
-				kept_tags = other_tags
-			else:
-				kept_keys = np.random.choice(num_tags, num_kept, replace=False)
-				kept_tags = [other_tags[i] for i in kept_keys]
+			kept_keys = np.random.choice(num_tags, num_kept, replace=False)
+			kept_tags = [other_tags[i] for i in kept_keys]
 	else:
 		kept_tags = other_tags
 
