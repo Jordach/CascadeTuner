@@ -85,6 +85,7 @@ def main():
     settings["tag_weighting_exponent"] = 7
     settings["tag_dropout_total_min"] = 25
     settings["tag_dropout_percentage"] = 0.3
+    settings["cache_skip"] = -1
 
     # Load settings from YAML config
     with open(args.yaml, "r") as f:
@@ -271,10 +272,10 @@ def main():
         latent_caching_bar = tqdm(dataloader, desc="Latent Caching")
         for batch in latent_caching_bar:
             # Quicker way to debug dataloader
-            if "cache_skip" in settings:
-                if step < settings["cache_skip"]:
-                    step += 1
-                    continue
+            if step < settings["cache_skip"]:
+                step += 1
+                latent_caching_bar.set_postfix({"skip": step})
+                continue
 
             latent_caching_bar.set_postfix({
                 "aspect": batch["aspect"],
