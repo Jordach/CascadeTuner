@@ -272,7 +272,7 @@ def main():
         for batch in latent_caching_bar:
             # Quicker way to debug dataloader
             if "cache_skip" in settings:
-                if step < settings["cache_step"]:
+                if step < settings["cache_skip"]:
                     step += 1
                     continue
 
