@@ -266,7 +266,7 @@ class StrictBucketeer:
 			
 			file_path = f"dataset_debug.csv"
 			with open(file_path, "a") as f:
-				f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
+				f.write(f"{w/h:.2f},{ratio},{w}x{h},{resize_w}x{resize_h},{crop_w}x{crop_h}\n")
 			return img, closest_ratio
 
 	def __call__(self, item, ratio=None):
