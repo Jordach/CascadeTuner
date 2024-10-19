@@ -252,7 +252,7 @@ def main():
     original_latent_caches = []
     if settings["create_latent_cache"] and not settings["use_latent_cache"]:
         # Ensure cache output directory exists:
-        if accelerator.is_main_process:
+        if accelerator.is_main_process and args.cache_only:
             os.makedirs(settings["latent_cache_location"], exist_ok=True)
             with open("cache_bucket_info.csv", "w") as f:
                 f.write("")
@@ -289,7 +289,7 @@ def main():
                 save_torch_zstd(batch, cache_path)
                 original_latent_caches.append(cache_path)
                 step += 1
-            if accelerator.is_main_process:
+            if accelerator.is_main_process and args.cache_only:
                 with open("cache_bucket_info.csv", "a") as f:
                     f.write(f"{step},{batch['aspect']}\n")
         if args.cache_only:
