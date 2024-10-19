@@ -254,7 +254,7 @@ class StrictBucketeer:
 			)
 			
 			# Crop if necessary
-			crop_size = (crop_h, crop_w)
+			crop_size = (crop_w, crop_h)
 			if img.shape[-2:] != crop_size:
 				if self.crop_mode == 'center':
 					img = torchvision.transforms.functional.center_crop(img, crop_size)
