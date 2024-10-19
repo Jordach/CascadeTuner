@@ -249,7 +249,7 @@ class StrictBucketeer:
 			crop_size = (crop_w, crop_h)
 			img = torchvision.transforms.functional.resize(
 				img, 
-				crop_size,
+				(crop_h, crop_w),
 				interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
 				antialias=True
 			)
