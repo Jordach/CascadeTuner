@@ -254,6 +254,8 @@ def main():
         # Ensure cache output directory exists:
         if accelerator.is_main_process:
             os.makedirs(settings["latent_cache_location"], exist_ok=True)
+            with open("cache_bucket_info.csv", "w") as f:
+                f.write("")
 
         step = 0
         latent_caching_bar = tqdm(dataloader, desc="Latent Caching")
@@ -261,6 +263,7 @@ def main():
             # Quicker way to debug dataloader
             if step < settings["cache_skip"]:
                 step += 1
+                latent_caching_bar.set_postfix({"aspect": batch["aspect"]})
             else:
                 img = batch["images"]
                 ratio = 1
@@ -286,7 +289,9 @@ def main():
                 save_torch_zstd(batch, cache_path)
                 original_latent_caches.append(cache_path)
                 step += 1
-
+            if accelerator.is_main_process:
+                with open("cache_bucket_info.csv", "a") as f:
+                    f.write(f"{step},{batch['aspect']}")
         if args.cache_only:
             return 0
         # Better method to handle latent caching
