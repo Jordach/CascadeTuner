@@ -291,7 +291,7 @@ def main():
                 step += 1
             if accelerator.is_main_process:
                 with open("cache_bucket_info.csv", "a") as f:
-                    f.write(f"{step},{batch['aspect']}")
+                    f.write(f"{step},{batch['aspect']}\n")
         if args.cache_only:
             return 0
         # Better method to handle latent caching
