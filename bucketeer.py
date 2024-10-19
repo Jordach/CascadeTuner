@@ -264,9 +264,9 @@ class StrictBucketeer:
 					self.smartcrop.output_size = crop_size
 					img = self.smartcrop(img)
 			
-			# file_path = f"dataset_debug.csv"
-			# with open(file_path, "a") as f:
-			# 	f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
+			file_path = f"dataset_debug.csv"
+			with open(file_path, "a") as f:
+				f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_size[1]}x{crop_size[0]}\n")
 			return img, closest_ratio
 
 	def __call__(self, item, ratio=None):
