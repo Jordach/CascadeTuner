@@ -249,7 +249,7 @@ class StrictBucketeer:
 			crop_size = (crop_w, crop_h)
 			img = torchvision.transforms.functional.resize(
 				img, 
-				(crop_h, crop_w),
+				crop_size,
 				interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
 				antialias=True
 			)
@@ -264,9 +264,9 @@ class StrictBucketeer:
 					self.smartcrop.output_size = crop_size
 					img = self.smartcrop(img)
 			
-			file_path = f"dataset_debug.csv"
-			with open(file_path, "a") as f:
-				f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_w}x{crop_h},{item}\n")
+			# file_path = f"dataset_debug.csv"
+			# with open(file_path, "a") as f:
+			# 	f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_w}x{crop_h},{item}\n")
 			return img, closest_ratio
 
 	def __call__(self, item, ratio=None):
