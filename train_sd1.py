@@ -262,14 +262,9 @@ def main():
             if step < settings["cache_skip"]:
                 step += 1
             else:
-                latent_caching_bar.set_postfix({
-                    "aspect": batch["aspect"],
-                    "bucket": batch["bucket"]
-                })
-
                 img = batch["images"]
                 ratio = 1
-                aspect = batch[0]["aspect"]
+                aspect = batch["aspect"]
                 images = []
                 for i in range(0, len(img)):
                     _img, _ratio = auto_bucketer(img[i], ratio=aspect)
@@ -278,15 +273,20 @@ def main():
                 images = torch.stack(images)
                 images = images.to(memory_format=torch.contiguous_format)
                 images = images.to(accelerator.device)
-  
+                batch["bucket"] = ratio
                 batch["vae_encoded"] = vae_encode(images, vae)
                 del images
 
                 file_name = f"latent_cache_{settings['experiment_id']}_{step}.zpt"
                 cache_path = os.path.join(settings["latent_cache_location"], file_name)
+                latent_caching_bar.set_postfix({
+                    "aspect": batch["aspect"],
+                    "bucket": batch["bucket"]
+                })
                 save_torch_zstd(batch, cache_path)
                 original_latent_caches.append(cache_path)
                 step += 1
+
         if args.cache_only:
             return 0
         # Better method to handle latent caching
