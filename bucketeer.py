@@ -219,12 +219,12 @@ class StrictBucketeer:
 			warnings.simplefilter("ignore")
 			image = Image.open(item).convert("RGB")
 			w, h = image.size
+			actual_ratio = max(w, h) / min(w, h)
 
 			# Get the resize and crop sizes
 			crop_w, crop_h, closest_ratio = self.get_resize_and_crop_sizes(w, h, ratio=ratio)
 			
 			# Calculate resize dimensions to exceed or match crop size
-			# actual_ratio = max(w, h) / min(w, h)
 			# if w == h:
 			# 	# For square images, directly use the crop size
 			# 	resize_size = (crop_h, crop_w)
@@ -244,8 +244,9 @@ class StrictBucketeer:
 			# 	resize_size = (resize_w, resize_h)
 
 			# Resize image
-			crop_size = (crop_w, crop_h)
-			image = image.resize((crop_h, crop_w), Image.Resampling.LANCZOS)
+			crop_size = (crop_w, crop_h) if actual_ratio < 1 else (crop_h, crop_w)
+			resize_size = (crop_h, crop_w) if actual_ratio < 1 else (crop_w, crop_h)
+			image = image.resize(resize_size, Image.Resampling.LANCZOS)
 			img = self.transforms(image) if self.transforms else torchvision.transforms.ToTensor()(image)
 			del image
 			# img = torchvision.transforms.functional.resize(
