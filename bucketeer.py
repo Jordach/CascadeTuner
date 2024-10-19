@@ -245,7 +245,7 @@ class StrictBucketeer:
 
 			# Resize image
 			crop_size = (crop_w, crop_h)
-			image = image.resize(crop_size, Image.Resampling.LANCZOS)
+			image = image.resize((crop_h, crop_w), Image.Resampling.LANCZOS)
 			img = self.transforms(image) if self.transforms else torchvision.transforms.ToTensor()(image)
 			del image
 			# img = torchvision.transforms.functional.resize(
