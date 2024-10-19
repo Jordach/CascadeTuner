@@ -261,7 +261,7 @@ def main():
         latent_caching_bar = tqdm(dataloader, desc="Latent Caching")
         for batch in latent_caching_bar:
             # Quicker way to debug dataloader
-            if step < settings["cache_skip"]:
+            if step < settings["cache_skip"] and settings["cache_skip"] > 0:
                 step += 1
                 latent_caching_bar.set_postfix({"aspect": batch["aspect"]})
             else:
