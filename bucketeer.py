@@ -225,36 +225,36 @@ class StrictBucketeer:
 			# Get the resize and crop sizes
 			crop_w, crop_h, closest_ratio = self.get_resize_and_crop_sizes(w, h, ratio=ratio)
 			
-			# Calculate resize dimensions to exceed or match crop size
-			actual_ratio = max(w, h) / min(w, h)
-			if w == h:
-				# For square images, directly use the crop size
-				resize_size = (crop_h, crop_w)
-			elif w < h:
-				resize_w = copy.deepcopy(crop_w) # Don't make a variable alias, causes problems
-				resize_h = int(resize_w * actual_ratio)
-				while resize_h <= crop_w:
-					resize_w += 1
-					resize_h = int(resize_w * actual_ratio)
-				resize_size = (resize_h, resize_w)
-			else:
-				resize_h = copy.deepcopy(crop_h) # Don't make a variable alias, causes problems
-				resize_w = int(resize_h * actual_ratio)
-				while resize_w <= crop_h:
-					resize_h += 1
-					resize_w = int(resize_h * actual_ratio)
-				resize_size = (resize_h, resize_w)
+			# # Calculate resize dimensions to exceed or match crop size
+			# actual_ratio = max(w, h) / min(w, h)
+			# if w == h:
+			# 	# For square images, directly use the crop size
+			# 	resize_size = (crop_h, crop_w)
+			# elif w < h:
+			# 	resize_w = copy.deepcopy(crop_w) # Don't make a variable alias, causes problems
+			# 	resize_h = int(resize_w * actual_ratio)
+			# 	while resize_h <= crop_w:
+			# 		resize_w += 1
+			# 		resize_h = int(resize_w * actual_ratio)
+			# 	resize_size = (resize_h, resize_w)
+			# else:
+			# 	resize_h = copy.deepcopy(crop_h) # Don't make a variable alias, causes problems
+			# 	resize_w = int(resize_h * actual_ratio)
+			# 	while resize_w <= crop_h:
+			# 		resize_h += 1
+			# 		resize_w = int(resize_h * actual_ratio)
+			# 	resize_size = (resize_h, resize_w)
 			
 			# Resize image
+			crop_size = (crop_w, crop_h)
 			img = torchvision.transforms.functional.resize(
 				img, 
-				resize_size,
+				(crop_h, crop_w),
 				interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
 				antialias=True
 			)
 			
 			# Crop if necessary
-			crop_size = (crop_w, crop_h)
 			if img.shape[-2:] != crop_size:
 				if self.crop_mode == 'center':
 					img = torchvision.transforms.functional.center_crop(img, crop_size)
@@ -266,7 +266,7 @@ class StrictBucketeer:
 			
 			file_path = f"dataset_debug.csv"
 			with open(file_path, "a") as f:
-				f.write(f"{w/h:.2f},{ratio},{w}x{h},{resize_w}x{resize_h},{crop_w}x{crop_h},{item}\n")
+				f.write(f"{w/h:.2f},{ratio},{w}x{h},{crop_w}x{crop_h},{item}\n")
 			return img, closest_ratio
 
 	def __call__(self, item, ratio=None):
