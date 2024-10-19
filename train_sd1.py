@@ -220,7 +220,7 @@ def main():
         # Tokenisation should be done during latent caching/runtime VAE encoding process to avoid storing lots of tokens in system memory.
         tokens, att_mask = tokenize_respecting_boundaries(tokenizer, captions)
         dropout = batch[0]["dropout"]
-        return {"images": batch[0]["images"], "tokens": tokens, "att_mask": att_mask, "captions": captions, "dropout": dropout, "aspect": aspect, "bucket": ratio}
+        return {"images": batch[0]["images"], "tokens": tokens, "att_mask": att_mask, "captions": captions, "dropout": dropout, "aspect": batch[0]["aspect"]}
 
     # Shuffle the dataset and initialise the dataloader if we're not latent caching
     set_seed(settings["seed"])
