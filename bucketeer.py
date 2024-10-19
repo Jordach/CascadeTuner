@@ -219,40 +219,41 @@ class StrictBucketeer:
 			warnings.simplefilter("ignore")
 			image = Image.open(item).convert("RGB")
 			w, h = image.size
-			img = self.transforms(image) if self.transforms else torchvision.transforms.ToTensor()(image)
-			del image
 
 			# Get the resize and crop sizes
 			crop_w, crop_h, closest_ratio = self.get_resize_and_crop_sizes(w, h, ratio=ratio)
 			
-			# # Calculate resize dimensions to exceed or match crop size
-			# actual_ratio = max(w, h) / min(w, h)
-			# if w == h:
-			# 	# For square images, directly use the crop size
-			# 	resize_size = (crop_h, crop_w)
-			# elif w < h:
-			# 	resize_w = copy.deepcopy(crop_w) # Don't make a variable alias, causes problems
-			# 	resize_h = int(resize_w * actual_ratio)
-			# 	while resize_h <= crop_w:
-			# 		resize_w += 1
-			# 		resize_h = int(resize_w * actual_ratio)
-			# 	resize_size = (resize_h, resize_w)
-			# else:
-			# 	resize_h = copy.deepcopy(crop_h) # Don't make a variable alias, causes problems
-			# 	resize_w = int(resize_h * actual_ratio)
-			# 	while resize_w <= crop_h:
-			# 		resize_h += 1
-			# 		resize_w = int(resize_h * actual_ratio)
-			# 	resize_size = (resize_h, resize_w)
-			
+			# Calculate resize dimensions to exceed or match crop size
+			actual_ratio = max(w, h) / min(w, h)
+			if w == h:
+				# For square images, directly use the crop size
+				resize_size = (crop_h, crop_w)
+			elif w < h:
+				resize_w = copy.deepcopy(crop_w) # Don't make a variable alias, causes problems
+				resize_h = int(resize_w * actual_ratio)
+				while resize_h <= crop_w:
+					resize_w += 1
+					resize_h = int(resize_w * actual_ratio)
+				resize_size = (resize_h, resize_w)
+			else:
+				resize_h = copy.deepcopy(crop_h) # Don't make a variable alias, causes problems
+				resize_w = int(resize_h * actual_ratio)
+				while resize_w <= crop_h:
+					resize_h += 1
+					resize_w = int(resize_h * actual_ratio)
+				resize_size = (resize_h, resize_w)
+
 			# Resize image
+			image = image.resize(resize_size, Image.Resampling.LANCZOS)
+			img = self.transforms(image) if self.transforms else torchvision.transforms.ToTensor()(image)
+			del image
 			crop_size = (crop_w, crop_h)
-			img = torchvision.transforms.functional.resize(
-				img, 
-				(crop_h, crop_w),
-				interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-				antialias=True
-			)
+			# img = torchvision.transforms.functional.resize(
+			# 	img, 
+			# 	(crop_h, crop_w),
+			# 	interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
+			# 	antialias=True
+			# )
 			
 			# Crop if necessary
 			if img.shape[-2:] != crop_size:
