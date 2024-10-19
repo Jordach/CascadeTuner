@@ -231,14 +231,14 @@ class StrictBucketeer:
 			elif w < h:
 				resize_w = copy.deepcopy(crop_w) # Don't make a variable alias, causes problems
 				resize_h = int(resize_w * actual_ratio)
-				while resize_h <= crop_w:
+				while resize_h <= crop_h:
 					resize_w += 1
 					resize_h = int(resize_w * actual_ratio)
 				resize_size = (resize_w, resize_h)
 			else:
 				resize_h = copy.deepcopy(crop_h) # Don't make a variable alias, causes problems
 				resize_w = int(resize_h * actual_ratio)
-				while resize_w <= crop_h:
+				while resize_w <= crop_w:
 					resize_h += 1
 					resize_w = int(resize_h * actual_ratio)
 				resize_size = (resize_w, resize_h)
