@@ -443,26 +443,21 @@ def main():
                     target = noise
 
                     if "min_snr_gamma" in settings:
-                        # Calculate MSE loss without reduction
-                        mse_loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        
-                        # Calculate MinSNR weights
-                        snr_weights = minSNR_weighting(timesteps, noise_scheduler, settings["min_snr_gamma"])
-                        
-                        # Reshape weights to match loss dimensions
-                        snr_weights = snr_weights.view(-1, 1, 1, 1)
-                        
-                        # Apply weights to each timestep's loss
-                        weighted_losses = mse_loss * snr_weights
-                        
-                        # Sum losses across spatial dimensions
-                        timestep_losses = weighted_losses.sum(dim=[1, 2, 3])
-                        
-                        # Treat each timestep as a separate task
-                        multi_task_loss = timestep_losses.mean()
-                        
-                        # Clip the loss to avoid extremely large values
-                        loss = torch.clamp(multi_task_loss, max=1000.0)
+                        # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                        # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                        # This is discussed in Section 4.2 of the same paper.
+                        snr = compute_snr(noise_scheduler, timesteps)
+                        mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                            dim=1
+                        )[0]
+                        if noise_scheduler.config.prediction_type == "epsilon":
+                            mse_loss_weights = mse_loss_weights / snr
+                        elif noise_scheduler.config.prediction_type == "v_prediction":
+                            mse_loss_weights = mse_loss_weights / (snr + 1)
+
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                        loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                        loss = loss.mean()
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 

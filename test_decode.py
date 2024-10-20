@@ -15,8 +15,8 @@ bid = random.randint(0, 279)
 
 # print("---")
 
-# batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_beta_3134.zpt", "cuda:0")
-batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_18525.zpt", "cuda:0")
+batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_beta_3134.zpt", "cuda:0")
+# batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_18525.zpt", "cuda:0")
 # for x in batch["tokens"]:
 # 	print(x)\
 # 	break
