@@ -245,16 +245,16 @@ class StrictBucketeer:
 
 			# Resize image
 			crop_size = (crop_w, crop_h) if actual_ratio < 1 else (crop_h, crop_w)
-			resize_size = (crop_h, crop_w) if actual_ratio < 1 else (crop_w, crop_h)
-			image = image.resize(resize_size, Image.Resampling.LANCZOS)
+			resize_size = min(crop_w, crop_h)
+			# image = image.resize(resize_size, Image.Resampling.LANCZOS)
 			img = self.transforms(image) if self.transforms else torchvision.transforms.ToTensor()(image)
+			img = torchvision.transforms.functional.resize(
+				img, 
+				resize_size,
+				interpolation=torchvision.transforms.InterpolationMode.LANCZOS,
+				antialias=True
+			)
 			del image
-			# img = torchvision.transforms.functional.resize(
-			# 	img, 
-			# 	(crop_h, crop_w),
-			# 	interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-			# 	antialias=True
-			# )
 			
 			# Crop if necessary
 			if img.shape[-2:] != crop_size:
