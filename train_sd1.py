@@ -447,7 +447,7 @@ def main():
                         # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                         # This is discussed in Section 4.2 of the same paper.
                         snr = compute_snr(noise_scheduler, timesteps)
-                        mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                        mse_loss_weights = torch.stack([snr, settings["min_snr_gamma"] * torch.ones_like(timesteps)], dim=1).min(
                             dim=1
                         )[0]
                         if noise_scheduler.config.prediction_type == "epsilon":
