@@ -42,7 +42,7 @@ def shuffle_and_drop_tags(caption, settings, always_keep=None):
 	final_tags = keep_tags + kept_tags
 	random.shuffle(final_tags)
 
-	return ",".join(final_tags)
+	return ", ".join(final_tags)
 
 def tokenize_respecting_boundaries(tokenizer, captions, max_length=75):
 	batch_size = len(captions)
