@@ -26,7 +26,7 @@ batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_24024.zp
 # print(batch["aspect"], batch["bucket"])
 
 # Load the VAE model
-vae = AutoencoderKL.from_pretrained("E:\sd1-5", subfolder="vae")
+vae = AutoencoderKL.from_pretrained("E:\\sd1-5", subfolder="vae")
 vae.to("cuda:0")
 vae.requires_grad_(False)
 vae.enable_slicing()

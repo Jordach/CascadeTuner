@@ -251,7 +251,7 @@ class StrictBucketeer:
 			img = torchvision.transforms.functional.resize(
 				img, 
 				resize_size,
-				interpolation=torchvision.transforms.InterpolationMode.LANCZOS,
+				interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
 				antialias=True
 			)
 			del image
