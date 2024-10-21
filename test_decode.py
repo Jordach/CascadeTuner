@@ -15,9 +15,9 @@ bid = random.randint(0, 279)
 
 # print("---")
 
-# batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_beta_3134.zpt", "cuda:0")
-# batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_18525.zpt", "cuda:0")
-batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_24024.zpt", "cuda:0")
+# batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_3134.zpt", "cuda:0")
+batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_18525.zpt", "cuda:0")
+# batch = load_torch_zstd(f"E:\\sd1_latents\\latent_cache_reso_mini_delta_24024.zpt", "cuda:0")
 # for x in batch["tokens"]:
 # 	print(x)\
 # 	break
@@ -46,7 +46,7 @@ def decode_latents(latents):
 	image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
 	images = (image * 255).round().astype("uint8")
 	pil_images = [Image.fromarray(image) for image in images]
-	print(pil_images[0].width, pil_images[0].height)
+	print(pil_images[0].width, pil_images[0].height, pil_images[0].width/pil_images[0].height)
 	return pil_images
 
 decoded_images = decode_latents(batch["vae_encoded"].to(dtype=torch.float32))
