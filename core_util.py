@@ -32,13 +32,17 @@ EXPECTED_TRAIN = "___REQUIRED_TRAIN___"
 def minSNR_weighting_loss(loss, timesteps, noise_scheduler, gamma):
 	alphas = noise_scheduler.alphas_cumprod
 	sqrt_alphas = torch.sqrt(alphas)
-	sqrt_minus_one_alphas = torch.sqrt(1.0 - alphas)
-	all_snr = (sqrt_alphas / sqrt_minus_one_alphas) ** 2
+	sqrt_sigmas = torch.sqrt(1.0 - alphas)
+
+	# Get SNR for timestep
+	all_snr = (sqrt_alphas / sqrt_sigmas) ** 2
 	snr = torch.stack([all_snr[t] for t in timesteps])
-	gamma_over = torch.div(torch.ones_like(snr)*gamma, snr)
+
+	# Calculate SNR weighting
+	gamma_over = torch.div(torch.ones_like(snr) * gamma, snr)
 	snr_weight = torch.minimum(gamma_over, torch.ones_like(gamma_over)).float()
-	snr_loss = loss * snr_weight
-	return snr_loss
+	
+	return loss * snr_weight
 
 def minSNR_weighting(timesteps, noise_scheduler, gamma):
 	alphas = noise_scheduler.alphas_cumprod

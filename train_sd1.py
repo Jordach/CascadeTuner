@@ -22,7 +22,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from bucketeer import StrictBucketeer
-from core_util import minSNR_weighting
+from core_util import minSNR_weighting_loss
 from dataset_util import BucketWalker
 from tokeniser_util import get_text_embeds, tokenize_respecting_boundaries
 from optim_util import get_optimizer, step_adafactor
@@ -443,20 +443,17 @@ def main():
                     target = noise
 
                     if "min_snr_gamma" in settings:
-                        # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
-                        # Since we predict the noise instead of x_0, the original formulation is slightly changed.
-                        # This is discussed in Section 4.2 of the same paper.
-                        snr = compute_snr(noise_scheduler, timesteps)
-                        mse_loss_weights = torch.stack([snr, settings["min_snr_gamma"] * torch.ones_like(timesteps)], dim=1).min(
-                            dim=1
-                        )[0]
-                        if noise_scheduler.config.prediction_type == "epsilon":
-                            mse_loss_weights = mse_loss_weights / snr
-                        elif noise_scheduler.config.prediction_type == "v_prediction":
-                            mse_loss_weights = mse_loss_weights / (snr + 1)
-
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                        # Use MSE loss with minSNR weighting
+                        loss = F.mse_loss(
+                            model_pred.float(),
+                            noise.float(),
+                            reduction="none"
+                        )
+                        # Average over all dimensions except batch
+                        loss = loss.mean([1, 2, 3])
+                        # Apply SNR weighting
+                        loss = minSNR_weighting_loss(loss, timesteps, noise_scheduler, settings["min_snr_gamma"])
+                        # Final mean over batch
                         loss = loss.mean()
                     else:
                         loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
