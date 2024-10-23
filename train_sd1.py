@@ -424,64 +424,63 @@ def main():
         for step, batch in enumerate(dataloader):
             loss_weighting_mult = 1
             with accelerator.accumulate(unet, text_model) if settings["train_text_encoder"] else accelerator.accumulate(unet):
-                with accelerator.autocast():
-                    captions = batch[0]["tokens"]
-                    attn_mask = batch[0]["att_mask"]
-                    latents = batch[0]["vae_encoded"].detach() # Detach prevents already cached latents with requires_grad==True causing issues
-                    dropout = batch[0]["dropout"]
-                    batch_size = len(batch[0]["captions"])
+                captions = batch[0]["tokens"]
+                attn_mask = batch[0]["att_mask"]
+                latents = batch[0]["vae_encoded"].detach() # Detach prevents already cached latents with requires_grad==True causing issues
+                dropout = batch[0]["dropout"]
+                batch_size = len(batch[0]["captions"])
 
-                    noise = torch.randn_like(latents)
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (batch_size,), device=accelerator.device)
-                    timesteps = timesteps.long()
+                noise = torch.randn_like(latents)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (batch_size,), device=accelerator.device)
+                timesteps = timesteps.long()
 
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                    text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size, text_encoder_context)
-                    
-                    model_pred = unet(noisy_latents, timesteps, text_embeds).sample
-                    target = noise
+                text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size, text_encoder_context)
+                
+                model_pred = unet(noisy_latents, timesteps, text_embeds).sample
+                target = noise
 
-                    if "min_snr_gamma" in settings:
-                        # Use MSE loss with minSNR weighting
-                        loss = F.mse_loss(
-                            model_pred.float(),
-                            noise.float(),
-                            reduction="none"
-                        )
-                        # Average over all dimensions except batch
-                        loss = loss.mean([1, 2, 3])
-                        # Apply SNR weighting
-                        loss = minSNR_weighting_loss(loss, timesteps, noise_scheduler, settings["min_snr_gamma"])
-                        # Final mean over batch
-                        loss = loss.mean()
-                    else:
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                if "min_snr_gamma" in settings:
+                    # Use MSE loss with minSNR weighting
+                    loss = F.mse_loss(
+                        model_pred.float(),
+                        noise.float(),
+                        reduction="none"
+                    )
+                    # Average over all dimensions except batch
+                    loss = loss.mean([1, 2, 3])
+                    # Apply SNR weighting
+                    loss = minSNR_weighting_loss(loss, timesteps, noise_scheduler, settings["min_snr_gamma"])
+                    # Final mean over batch
+                    loss = loss.mean()
+                else:
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
-                    # Handle loss weighting for rare tags
-                    if settings["tag_weighting_used"]:
-                        loss_weighting_mult = get_loss_multiplier_for_batch(tag_weighting_dict, settings, batch[0]["captions"]) 
-                        loss = loss * loss_weighting_mult
+                # Handle loss weighting for rare tags
+                if settings["tag_weighting_used"]:
+                    loss_weighting_mult = get_loss_multiplier_for_batch(tag_weighting_dict, settings, batch[0]["captions"]) 
+                    loss = loss * loss_weighting_mult
 
-                    accelerator.backward(loss)
-                    del timesteps, noise, latents, noisy_latents, text_embeds, target
+                accelerator.backward(loss)
+                del timesteps, noise, latents, noisy_latents, text_embeds, target
 
-                    if accelerator.sync_gradients:
-                        grad_norm = accelerator.clip_grad_norm_((itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters()), 1.0)
-                        last_grad_norm = grad_norm.mean().item()
-                    
-                    unet_optimizer.step()
-                    unet_scheduler.step()
-                    unet_optimizer.zero_grad()
+                if accelerator.sync_gradients:
+                    grad_norm = accelerator.clip_grad_norm_((itertools.chain(unet.parameters(), text_model.parameters()) if settings["train_text_encoder"] else unet.parameters()), 1.0)
+                    last_grad_norm = grad_norm.mean().item()
+                
+                unet_optimizer.step()
+                unet_scheduler.step()
+                unet_optimizer.zero_grad()
 
-                    if settings["train_text_encoder"]:
-                        text_optimizer.step()
-                        text_scheduler.step()
-                        text_optimizer.zero_grad()
-                    
-                steps_bar.update(1)
-                current_step += 1
-                total_steps += 1
+                if settings["train_text_encoder"]:
+                    text_optimizer.step()
+                    text_scheduler.step()
+                    text_optimizer.zero_grad()
+                
+            steps_bar.update(1)
+            current_step += 1
+            total_steps += 1
 
             if accelerator.is_main_process:
                 logs = {
