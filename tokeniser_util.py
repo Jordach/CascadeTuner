@@ -152,6 +152,7 @@ def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokeni
 				# encode
 				text_encoder_output = fake_text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
 				hidden_states = text_encoder_output["hidden_states"][settings["clip_skip"]]
+				hidden_states = hidden_states.float()
 				text_embed = fake_text_model.text_model.final_layer_norm(hidden_states)
 				if text_embeddings is None:
 					text_embeddings = text_embed
