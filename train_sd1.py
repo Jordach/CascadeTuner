@@ -92,8 +92,12 @@ def main():
         config = yaml.safe_load(f)
         settings = settings | config
 
-    main_dtype = getattr(torch, settings["dtype"]) if "dtype" in settings else torch.float32
-    if settings["dtype"] == "tf32":
+    main_dtype = torch.float32
+    if settings["dtype"] == "float16":
+        main_dtype = torch.float16
+    elif settings["dtype"] == "float16":
+        main_dtype = torch.bfloat16
+    elif settings["dtype"] == "tf32":
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
