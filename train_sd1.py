@@ -324,6 +324,8 @@ def main():
     noise_scheduler = DDPMScheduler.from_pretrained(settings["model_name"], subfolder="scheduler")
     unet = UNet2DConditionModel.from_pretrained(settings["model_name"], subfolder="unet", main_dtype=main_dtype)
     text_model = CLIPTextModel.from_pretrained(settings["model_name"], subfolder="text_encoder", torch_dtype=main_dtype)
+    if not settings["train_text_encoder"]:
+        text_model.requires_grad_(False)
 
     if settings["enable_gradient_checkpointing"]:
         unet.enable_gradient_checkpointing()
