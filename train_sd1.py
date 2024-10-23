@@ -95,7 +95,7 @@ def main():
     main_dtype = torch.float32
     if settings["dtype"] == "float16":
         main_dtype = torch.float16
-    elif settings["dtype"] == "float16":
+    elif settings["dtype"] == "bfloat16":
         main_dtype = torch.bfloat16
     elif settings["dtype"] == "tf32":
         torch.backends.cuda.matmul.allow_tf32 = True
