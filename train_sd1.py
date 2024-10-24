@@ -322,7 +322,7 @@ def main():
 
     accelerator.print("Now loading core model files.")
     noise_scheduler = DDPMScheduler.from_pretrained(settings["model_name"], subfolder="scheduler")
-    unet = UNet2DConditionModel.from_pretrained(settings["model_name"], subfolder="unet", main_dtype=torch.float32)
+    unet = UNet2DConditionModel.from_pretrained(settings["model_name"], subfolder="unet", torch_dtype=torch.float32)
     text_model = CLIPTextModel.from_pretrained(settings["model_name"], subfolder="text_encoder", torch_dtype=main_dtype)
     if not settings["train_text_encoder"]:
         text_model.requires_grad_(False)
