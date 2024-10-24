@@ -37,12 +37,14 @@ timesteps = torch.arange(num_timesteps)
 gamma_values = [0.1, 0.5, 1.0, 2.0, 5.0]
 
 # Calculate minSNR weights for each gamma value
-weights = {gamma: minSNR_weighting(timesteps, noise_scheduler, gamma).numpy() for gamma in gamma_values}
+# weights = {gamma: minSNR_weighting(timesteps, noise_scheduler, gamma).numpy() for gamma in gamma_values}
+weights = {"alphas": [(1-torch.sqrt(alphas)).numpy() for alphas in noise_scheduler.alphas_cumprod]}
 
 # Create the plot
 plt.figure(figsize=(12, 8))
-for gamma, weight in weights.items():
-    plt.plot(timesteps.numpy(), weight, label=f'γ = {gamma}')
+# for gamma, weight in weights.items():
+#     plt.plot(timesteps.numpy(), weight, label=f'γ = {gamma}')
+plt.plot(timesteps.numpy(), weights["alphas"], label="Alphas")
 
 plt.xlabel('Timestep')
 plt.ylabel('minSNR Weight')
