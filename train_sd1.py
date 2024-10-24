@@ -335,6 +335,7 @@ def main():
     # Apply xformers to unet:
     if is_xformers_available() and not settings["use_pytorch_cross_attention"]:
         try:
+            accelerator.print("Enabling xformers attention for unet")
             unet.enable_xformers_memory_efficient_attention()
         except Exception as e:
             raise Exception("Could not enable memory efficient attention. Make sure xformers is installed")
