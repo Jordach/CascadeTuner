@@ -34,14 +34,16 @@ def minSNR_weighting_loss(loss, timesteps, noise_scheduler, gamma):
 	sqrt_alphas = torch.sqrt(alphas)
 	sqrt_sigmas = torch.sqrt(1.0 - alphas)
 
-	# Get SNR for timestep
-	all_snr = (sqrt_alphas / sqrt_sigmas) ** 2
+	# Add small epsilon to avoid division by zero
+	eps = 1e-7
+	all_snr = (sqrt_alphas / (sqrt_sigmas + eps)) ** 2
 	snr = torch.stack([all_snr[t] for t in timesteps])
-
-	# Calculate SNR weighting
+	
+	# Clamp SNR to reasonable range
+	snr = torch.clamp(snr, min=1e-7, max=1e7)
 	gamma_over = torch.div(torch.ones_like(snr) * gamma, snr)
 	snr_weight = torch.minimum(gamma_over, torch.ones_like(gamma_over)).float()
-	
+
 	return loss * snr_weight
 
 def minSNR_weighting(timesteps, noise_scheduler, gamma):

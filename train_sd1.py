@@ -431,20 +431,20 @@ def main():
         for step, batch in enumerate(dataloader):
             loss_weighting_mult = 1
             with accelerator.accumulate(unet, text_model) if settings["train_text_encoder"] else accelerator.accumulate(unet):
+                captions = batch[0]["tokens"]
+                attn_mask = batch[0]["att_mask"]
+                latents = batch[0]["vae_encoded"].detach() # Detach prevents already cached latents with requires_grad==True causing issues
+                dropout = batch[0]["dropout"]
+                batch_size = len(batch[0]["captions"])
+
+                noise = torch.randn_like(latents)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (batch_size,), device=accelerator.device)
+                timesteps = timesteps.long()
+
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
                 with accelerator.autocast():
-                    captions = batch[0]["tokens"]
-                    attn_mask = batch[0]["att_mask"]
-                    latents = batch[0]["vae_encoded"].detach() # Detach prevents already cached latents with requires_grad==True causing issues
-                    dropout = batch[0]["dropout"]
-                    batch_size = len(batch[0]["captions"])
-
-                    noise = torch.randn_like(latents)
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (batch_size,), device=accelerator.device)
-                    timesteps = timesteps.long()
-
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-                    text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size, text_encoder_context)
+                    text_embeds, text_pool = get_text_embeds(dropout, text_model, accelerator, captions, attn_mask, tokenizer, settings, batch_size, False, text_encoder_context)
                     
                     model_pred = unet(noisy_latents, timesteps, text_embeds).sample
                     target = noise

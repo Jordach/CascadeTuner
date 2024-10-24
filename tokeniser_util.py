@@ -109,7 +109,7 @@ def tokenize_respecting_boundaries(tokenizer, captions, max_length=75):
 
 	return tokenized_captions_list, attention_masks_list
 
-def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokenizer, settings, batch_size, text_encoder_context):
+def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokenizer, settings, batch_size, attn_mask, text_encoder_context):
 	with text_encoder_context:
 		text_embeddings = None
 		text_embeddings_pool = None
@@ -150,10 +150,14 @@ def get_text_embeds(dropout, text_model, accelerator, captions, att_mask, tokeni
 				# First 75 tokens we allow BOS to not be masked - otherwise we mask them out
 				fake_text_model = accelerator.unwrap_model(text_model) if accelerator.num_processes > 1 else text_model
 				# encode
-				text_encoder_output = fake_text_model(**{"input_ids": token_chunk, "attention_mask": attn_chunk}, output_hidden_states=True)
+				inputs = {"input_ids": token_chunk}
+				if attn_mask:
+					inputs["attention_mask"] = attn_chunk
+				text_encoder_output = fake_text_model(**inputs, output_hidden_states=True)
 				hidden_states = text_encoder_output["hidden_states"][settings["clip_skip"]]
 				hidden_states = hidden_states.to(dtype=torch.float32)
 				text_embed = fake_text_model.text_model.final_layer_norm(hidden_states)
+
 				if text_embeddings is None:
 					text_embeddings = text_embed
 					text_embeddings_pool = hidden_states.text_embeds.unsqueeze(1) if "text_embeds" in text_encoder_output else None
