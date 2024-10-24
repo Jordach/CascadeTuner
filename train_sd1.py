@@ -333,7 +333,7 @@ def main():
             text_model.gradient_checkpointing_enable()
 
     # Apply xformers to unet:
-    if is_xformers_available():
+    if is_xformers_available() and not settings["use_pytorch_cross_attention"]:
         try:
             unet.enable_xformers_memory_efficient_attention()
         except Exception as e:
